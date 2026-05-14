@@ -457,6 +457,64 @@ function sortMessagesByConversationOrder(messages) {
     .map((item) => item.message);
 }
 
+function normalizeVisibleText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function latestAgentActivityMessage(activityMessage) {
+  const activities = Array.isArray(activityMessage?.activities) ? activityMessage.activities : [];
+  return activities
+    .filter((activity) => activity?.kind === 'agent_message' && normalizeVisibleText(activity.label || activity.content || activity.detail))
+    .sort((left, right) => messageTimestampValue(left) - messageTimestampValue(right))
+    .at(-1) || null;
+}
+
+function addVisibleAgentActivitySummaries(messages) {
+  const result = [...messages];
+  const assistantByTurn = new Map();
+  for (const message of result) {
+    if (message?.role !== 'assistant' || !message.turnId) {
+      continue;
+    }
+    const existing = assistantByTurn.get(message.turnId) || [];
+    existing.push(normalizeVisibleText(message.content));
+    assistantByTurn.set(message.turnId, existing);
+  }
+
+  for (const message of messages) {
+    if (message?.role !== 'activity' || !message.turnId || message.status === 'running') {
+      continue;
+    }
+    const latest = latestAgentActivityMessage(message);
+    if (!latest) {
+      continue;
+    }
+    const content = normalizeVisibleText(latest.label || latest.content || latest.detail);
+    if (!content) {
+      continue;
+    }
+    const existingAssistantTexts = assistantByTurn.get(message.turnId) || [];
+    if (existingAssistantTexts.length > 0) {
+      continue;
+    }
+    const id = `${latest.id || message.id}-visible`;
+    if (result.some((item) => item.id === id)) {
+      continue;
+    }
+    result.push({
+      id,
+      role: 'assistant',
+      content,
+      kind: 'activity_summary',
+      timestamp: latest.timestamp || message.completedAt || message.timestamp || new Date().toISOString(),
+      turnId: message.turnId,
+      sessionId: message.sessionId
+    });
+    assistantByTurn.set(message.turnId, [...existingAssistantTexts, content]);
+  }
+  return result;
+}
+
 function cacheKeyForMessages(sessionId, includeActivity) {
   return `${sessionId}:${includeActivity ? 'activity' : 'plain'}`;
 }
@@ -566,6 +624,7 @@ export function createSessionMessageReader({
         upsertDesktopActivity(messages, item.turnId, item.activity, item.segmentIndex);
       }
       sortDesktopActivitySteps(messages);
+      messages.splice(0, messages.length, ...addVisibleAgentActivitySummaries(messages));
     }
     const orderedMessages = sortMessagesByConversationOrder(messages);
 
