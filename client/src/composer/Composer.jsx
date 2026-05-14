@@ -828,23 +828,23 @@ export function Composer({
             {stopMode ? <Square size={15} /> : uploading ? <Loader2 className="spin" size={16} /> : <ArrowUp size={17} strokeWidth={2.25} />}
           </button>
         </div>
-        {homeMode ? (
-          <div className="home-project-strip" aria-label="首页项目选择">
-            <button
-              type="button"
-              className="home-project-button"
-              onClick={() => toggleMenu('project')}
-              disabled={composerReadOnly || !homeProject}
-              aria-expanded={openMenu === 'project'}
-              title={homeProjectLabel}
-            >
-              {homeProject?.projectless ? <MessageSquare size={15} /> : <Folder size={15} />}
-              <span>{homeProjectLabel}</span>
-              <ChevronDown size={13} />
-            </button>
-          </div>
-        ) : null}
       </div>
+      {homeMode ? (
+        <div className="home-project-strip" aria-label="首页项目选择">
+          <button
+            type="button"
+            className="home-project-button"
+            onClick={() => toggleMenu('project')}
+            disabled={composerReadOnly || !homeProject}
+            aria-expanded={openMenu === 'project'}
+            title={homeProjectLabel}
+          >
+            {homeProject?.projectless ? <MessageSquare size={15} /> : <Folder size={15} />}
+            <span>{homeProjectLabel}</span>
+            <ChevronDown size={13} />
+          </button>
+        </div>
+      ) : null}
     </form>
   );
 }

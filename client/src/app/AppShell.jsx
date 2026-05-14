@@ -15,13 +15,14 @@ import { Composer } from '../composer/Composer.jsx';
 import { ChatPane } from '../chat/ChatPane.jsx';
 import { HomePane } from './HomePane.jsx';
 import { ImagePreviewModal } from '../chat/ImagePreview.jsx';
-import { ConnectionRecoveryCard, DocsPanel, Drawer, GitPanel, PwaUpdatePrompt, ToastStack, TopBar } from '../panels/index.js';
+import { ConnectionRecoveryCard, DocsPanel, Drawer, GitPanel, GitQuickDialog, PwaUpdatePrompt, ToastStack, TopBar } from '../panels/index.js';
 
 export function AppShell({ shellClass, panelProps, drawerProps, chatProps, composerProps, homeVisible = false }) {
   const {
     topBarProps,
     docsPanelProps,
     gitPanelProps,
+    gitQuickDialogProps,
     recoveryCardProps,
     toastStackProps,
     pwaUpdateProps,
@@ -34,6 +35,7 @@ export function AppShell({ shellClass, panelProps, drawerProps, chatProps, compo
       <Drawer {...drawerProps} />
       <DocsPanel {...docsPanelProps} />
       <GitPanel {...gitPanelProps} />
+      <GitQuickDialog {...gitQuickDialogProps} />
       <ConnectionRecoveryCard {...recoveryCardProps} />
       <ToastStack {...toastStackProps} />
       <PwaUpdatePrompt {...pwaUpdateProps} />

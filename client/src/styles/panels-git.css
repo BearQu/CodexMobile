@@ -1,6 +1,6 @@
 .git-panel-body {
   gap: 14px;
-  padding: 16px;
+  padding: calc(env(safe-area-inset-top, 0px) + 78px) 16px 16px;
   overflow-y: auto;
 }
 
@@ -414,6 +414,116 @@
   justify-content: flex-start;
 }
 
+.git-quick-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 76px) 16px 16px;
+  background: rgba(12, 16, 22, 0.28);
+}
+
+.git-quick-dialog {
+  display: grid;
+  gap: 14px;
+  width: min(360px, 100%);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--glass-strong);
+  box-shadow: var(--soft-shadow);
+  backdrop-filter: blur(18px) saturate(1.08);
+}
+
+.git-quick-dialog header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-quick-dialog header strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-quick-dialog-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.git-quick-dialog p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.git-quick-dialog-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.git-quick-dialog-field span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.git-quick-dialog-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+}
+
+.git-quick-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.git-quick-dialog-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--panel-2);
+  font-size: 13px;
+}
+
+.git-quick-dialog-actions button[type="submit"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.git-quick-dialog-actions button:disabled {
+  opacity: 0.55;
+}
+
 [data-theme="dark"] .git-tabs,
 [data-theme="dark"] .git-status-card,
 [data-theme="dark"] .git-diff-card,
@@ -447,4 +557,14 @@
 [data-theme="dark"] .git-safety-list span {
   color: #fbbf24;
   background: rgba(245, 158, 11, 0.12);
+}
+
+[data-theme="dark"] .git-quick-dialog {
+  border-color: var(--line);
+  background: var(--glass-strong);
+}
+
+[data-theme="dark"] .git-quick-dialog-field input {
+  border-color: var(--line);
+  background: var(--panel);
 }

@@ -59,6 +59,28 @@ import {
 const MODEL_SPEED_KEY = 'codexmobile.modelSpeed';
 const DESKTOP_SHELL_MEDIA = '(min-width: 1024px)';
 
+function gitBranchDraft(project) {
+  const name = String(project?.name || 'changes')
+    .trim()
+    .toLowerCase()
+    .replace(/^codex\//, '')
+    .replace(/[^\w.-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[.-]+|[.-]+$/g, '');
+  return `codex/${name || 'changes'}`;
+}
+
+function gitChangedFileCount(status = {}) {
+  if (Number.isFinite(status.fileCount)) {
+    return status.fileCount;
+  }
+  return Array.isArray(status.files) ? status.files.length : 0;
+}
+
+function gitNeedsExplicitConfirm(status = {}) {
+  return gitChangedFileCount(status) > 50 || (status.branch && !String(status.branch).startsWith('codex/'));
+}
+
 export default function App() {
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [contextStatus, setContextStatus] = useState(() => normalizeContextStatus(DEFAULT_STATUS.context));
@@ -99,6 +121,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState(DEFAULT_STATUS.model);
   const [selectedModelSpeed, setSelectedModelSpeed] = useState(() => normalizeModelSpeed(localStorage.getItem(MODEL_SPEED_KEY)));
   const [selectedCollaborationMode, setSelectedCollaborationMode] = useState(null);
+  const [gitQuickDialog, setGitQuickDialog] = useState(null);
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState(() => {
     const defaultVersion = localStorage.getItem('codexmobile.reasoningDefaultVersion');
     if (defaultVersion !== REASONING_DEFAULT_VERSION) {
@@ -123,6 +146,7 @@ export default function App() {
   const [threadRuntimeById, setThreadRuntimeById] = useState({});
   const [syncing, setSyncing] = useState(false);
   const [desktopHandoffPending, setDesktopHandoffPending] = useState(false);
+  const [homeExiting, setHomeExiting] = useState(false);
   const [connectionState, setConnectionState] = useState(() => (getToken() ? 'connecting' : 'disconnected'));
   const wsRef = useRef(null);
   const selectedProjectRef = useRef(null);
@@ -131,6 +155,7 @@ export default function App() {
   const autoTitleSyncRef = useRef(new Set());
   const runningByIdRef = useRef({});
   const turnRefreshTimersRef = useRef(new Map());
+  const homeWasVisibleRef = useRef(false);
   const lastStatusSettingsRef = useRef({
     model: DEFAULT_STATUS.model,
     reasoningEffort: DEFAULT_STATUS.reasoningEffort || DEFAULT_REASONING_EFFORT
@@ -144,6 +169,30 @@ export default function App() {
   const drawerSyncAtRef = useRef(0);
   const desktopDrawerSeededRef = useRef(false);
   const composerRef = useRef(null);
+  const gitQuickDialogResolverRef = useRef(null);
+
+  const closeGitQuickDialog = useCallback((value = null) => {
+    const resolver = gitQuickDialogResolverRef.current;
+    gitQuickDialogResolverRef.current = null;
+    setGitQuickDialog(null);
+    resolver?.(value);
+  }, []);
+
+  const requestGitQuickDialog = useCallback((dialog) => new Promise((resolve) => {
+    gitQuickDialogResolverRef.current?.(null);
+    gitQuickDialogResolverRef.current = resolve;
+    setGitQuickDialog({ ...dialog, busy: false });
+  }), []);
+
+  const requestGitInput = useCallback(
+    (dialog) => requestGitQuickDialog({ ...dialog, mode: 'input' }),
+    [requestGitQuickDialog]
+  );
+  const requestGitConfirm = useCallback(
+    (dialog) => requestGitQuickDialog({ ...dialog, mode: 'confirm' }),
+    [requestGitQuickDialog]
+  );
+
   const {
     queueDrafts,
     loadQueueDrafts,
@@ -576,8 +625,90 @@ export default function App() {
   async function handleGitAction(action) {
     if (!selectedProject || selectedRunning) {
       return;
+      }
+      const projectId = selectedProject.id;
+      try {
+        if (action === 'branch') {
+        const branchName = await requestGitInput({
+          kind: 'branch',
+          title: '创建分支',
+          label: '分支名',
+          defaultValue: gitBranchDraft(selectedProject),
+          confirmText: '创建'
+        });
+        if (!branchName?.trim()) return;
+        showToast({ level: 'info', title: '创建分支', body: '正在创建并切换分支...' });
+        const result = await apiFetch('/api/git/branch', {
+          method: 'POST',
+          body: { projectId, branchName: branchName.trim() }
+        });
+        showToast({ level: 'success', title: '创建分支', body: `已切换到 ${result.branch || branchName.trim()}` });
+        return;
+      }
+
+      if (action === 'commit') {
+        const data = await apiFetch(`/api/git/status?projectId=${encodeURIComponent(projectId)}`);
+        const gitStatus = data.status || {};
+        if (!gitStatus.canCommit) {
+          showToast({ level: 'warning', title: '提交', body: '没有可提交的改动。' });
+          return;
+        }
+        const count = gitChangedFileCount(gitStatus);
+        if (gitNeedsExplicitConfirm(gitStatus)) {
+          const ok = await requestGitConfirm({
+            kind: 'commit',
+            title: '确认提交',
+            message: `当前在 ${gitStatus.branch || '未知分支'}，工作区有 ${count} 个改动文件。确认提交整个工作区吗？`,
+            confirmText: '确认提交'
+          });
+          if (!ok) return;
+        }
+        const message = await requestGitInput({
+          kind: 'commit',
+          title: '提交',
+          label: '提交信息',
+          defaultValue: gitStatus.defaultCommitMessage || '更新项目',
+          confirmText: '提交'
+        });
+        if (!message?.trim()) return;
+        showToast({ level: 'info', title: '提交', body: '正在提交 Git 改动...' });
+        const result = await apiFetch('/api/git/commit', {
+          method: 'POST',
+          timeoutMs: 70_000,
+          body: { projectId, message: message.trim() }
+        });
+        showToast({ level: 'success', title: '提交', body: result.hash ? `已提交 ${result.hash}` : 'Git 提交已完成。' });
+        return;
+      }
+
+      if (action === 'push') {
+        const data = await apiFetch(`/api/git/status?projectId=${encodeURIComponent(projectId)}`);
+        const gitStatus = data.status || {};
+        if (!gitStatus.branch) {
+          showToast({ level: 'warning', title: '推送', body: '当前不在有效 Git 分支上。' });
+          return;
+        }
+        if (gitStatus.branch === 'main' || gitStatus.branch === 'master') {
+          const ok = await requestGitConfirm({
+            kind: 'push',
+            title: '确认推送',
+            message: `当前分支是 ${gitStatus.branch}，确认推送吗？`,
+            confirmText: '确认推送'
+          });
+          if (!ok) return;
+        }
+        showToast({ level: 'info', title: '推送', body: '正在推送当前分支...' });
+        const result = await apiFetch('/api/git/push', {
+          method: 'POST',
+          timeoutMs: 130_000,
+          body: { projectId }
+        });
+        showToast({ level: 'success', title: '推送', body: result.branch ? `已推送 ${result.branch}` : 'Git 推送已完成。' });
+      }
+    } catch (error) {
+      const title = action === 'branch' ? '创建分支' : action === 'push' ? '推送' : '提交';
+      showToast({ level: 'error', title, body: error.message || 'Git 操作失败。' });
     }
-    setGitPanel({ open: true, action });
   }
 
   const {
@@ -597,6 +728,7 @@ export default function App() {
 
   const sessionLoading = Boolean(sessionLoadingId && selectedSession?.id === sessionLoadingId);
   const homeVisible = !sessionLoading && !sessionLoadError && messages.length === 0 && (!selectedSession || isDraftSession(selectedSession));
+  const homePaneVisible = homeVisible || homeExiting;
   const shellClass = useMemo(() => {
     const classes = ['app-shell'];
     if (drawerOpen) {
@@ -605,8 +737,26 @@ export default function App() {
     if (homeVisible) {
       classes.push('is-home');
     }
+    if (homeExiting) {
+      classes.push('is-home-exiting');
+    }
     return classes.join(' ');
-  }, [drawerOpen, homeVisible]);
+  }, [drawerOpen, homeExiting, homeVisible]);
+
+  useEffect(() => {
+    if (homeVisible) {
+      homeWasVisibleRef.current = true;
+      setHomeExiting(false);
+      return undefined;
+    }
+    if (!homeWasVisibleRef.current) {
+      return undefined;
+    }
+    homeWasVisibleRef.current = false;
+    setHomeExiting(true);
+    const timer = window.setTimeout(() => setHomeExiting(false), 280);
+    return () => window.clearTimeout(timer);
+  }, [homeVisible]);
   const visibleContextStatus = useMemo(
     () => {
       if (!selectedSession || isDraftSession(selectedSession)) {
@@ -790,7 +940,8 @@ export default function App() {
       notificationSupported,
       notificationEnabled,
       onEnableNotifications: enableNotifications,
-      gitDisabled: !selectedProject || selectedRunning
+      gitDisabled: !selectedProject || selectedRunning,
+      homeMode: homePaneVisible
     },
     docsPanelProps: {
       open: docsOpen,
@@ -810,6 +961,11 @@ export default function App() {
       project: selectedProject,
       onToast: showToast,
       onClose: () => setGitPanel((current) => ({ ...current, open: false }))
+    },
+    gitQuickDialogProps: {
+      dialog: gitQuickDialog,
+      onCancel: () => closeGitQuickDialog(null),
+      onSubmit: closeGitQuickDialog
     },
     recoveryCardProps: {
       state: recoveryState,
@@ -924,7 +1080,7 @@ export default function App() {
       drawerProps={drawerProps}
       chatProps={chatProps}
       composerProps={composerProps}
-      homeVisible={homeVisible}
+      homeVisible={homePaneVisible}
     />
   );
 }

@@ -6,7 +6,7 @@
  * Exports:
  * - Drawer — 侧栏根组件。
  *
- * Inward: apiFetch、runtime-debug-client、session-utils（路径展示与运行时摘要）；lucide-react。
+ * Inward: apiFetch、runtime-debug-client、session-utils（路径展示与运行时摘要）、TopBar 侧边栏图标；lucide-react。
  *
  * Outward: App 根布局在菜单打开时渲染。
  */
@@ -19,6 +19,7 @@ import { compactPath, formatTime, sessionRunBadgeState, subAgentSubtitle } from 
 import { DrawerArchiveView } from './DrawerArchiveView.jsx';
 import { DrawerQuotaPanel } from './DrawerQuotaPanel.jsx';
 import { DrawerSettingsView } from './DrawerSettingsView.jsx';
+import { SidebarToggleIcon } from './TopBar.jsx';
 
 function formatRelativeShort(value) {
   if (!value) {
@@ -106,7 +107,6 @@ export function Drawer({
   const [renameDraft, setRenameDraft] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameSaving, setRenameSaving] = useState(false);
-  const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState({ projects: false, conversations: false });
   const [runtimeDebugError, setRuntimeDebugError] = useState('');
   const [runtimeDebugSaving, setRuntimeDebugSaving] = useState(false);
@@ -138,7 +138,6 @@ export function Drawer({
       setRenameDraft(null);
       setRenameValue('');
       setRenameSaving(false);
-      setNewConversationOpen(false);
     }
   }, [open]);
 
@@ -163,7 +162,6 @@ export function Drawer({
       return;
     }
     setThreadActionMenu(null);
-    setNewConversationOpen(false);
     onNewConversation(project);
   }
 
@@ -637,8 +635,8 @@ export function Drawer({
             <img className="drawer-app-icon" src="/codex-icon-180.png" alt="" aria-hidden="true" />
             <span className="drawer-brand-name">CodexMobile</span>
           </div>
-          <button className="drawer-header-action" onClick={onClose} aria-label="关闭菜单">
-            <X size={16} />
+          <button className="drawer-header-action sidebar-toggle-button" onClick={onClose} aria-label="收起侧边栏">
+            <SidebarToggleIcon />
           </button>
         </div>
 
@@ -656,46 +654,13 @@ export function Drawer({
         <div className="drawer-thread-browser">
           <button
             type="button"
-            className={`drawer-new-row ${newConversationOpen ? 'is-open' : ''}`}
-            onClick={() => setNewConversationOpen((current) => !current)}
-            aria-expanded={newConversationOpen}
-            title="选择新对话位置"
+            className="drawer-new-row"
+            onClick={(event) => startNewConversation(projectlessProject || selectedProject || projectChoices[0], event)}
+            title="新对话"
           >
             <Plus size={16} />
             <span>新对话</span>
-            <ChevronDown size={14} />
           </button>
-
-          {newConversationOpen ? (
-            <div className="new-conversation-panel" aria-label="选择新对话位置">
-              {projectlessProject ? (
-                <button type="button" className="new-conversation-option" onClick={(event) => startNewConversation(projectlessProject, event)}>
-                  <MessageSquare size={15} />
-                  <span>
-                    <strong>普通对话</strong>
-                    <small>不绑定项目</small>
-                  </span>
-                </button>
-              ) : null}
-              {projectChoices.map((project) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  className="new-conversation-option"
-                  onClick={(event) => startNewConversation(project, event)}
-                >
-                  <Folder size={15} />
-                  <span>
-                    <strong>{project.name}</strong>
-                    <small>{project.pathLabel || compactPath(project.path)}</small>
-                  </span>
-                </button>
-              ))}
-              {!projectlessProject && !projectChoices.length ? (
-                <div className="new-conversation-empty">暂无可用位置</div>
-              ) : null}
-            </div>
-          ) : null}
 
           <div className="project-list">
             {renderedProjectGroups.length ? renderSectionHeading('projects', '项目') : null}
