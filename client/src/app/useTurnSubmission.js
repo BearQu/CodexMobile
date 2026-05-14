@@ -7,6 +7,7 @@ import {
   upsertStatusMessage
 } from '../chat/activity-model.js';
 import { mergeContextStatus } from './context-status.js';
+import { writeCachedSessionMessages } from './message-cache.js';
 import {
   autoTitlePatch,
   createClientTurnId,
@@ -143,6 +144,7 @@ export function useTurnSubmission({
           turnId
         })
       );
+      writeCachedSessionMessages(realSessionId, data, { activity: true });
       return true;
     }
     return false;

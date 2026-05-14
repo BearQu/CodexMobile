@@ -4,18 +4,28 @@ const STORE_NAME = 'sessionMessages';
 
 let dbPromise = null;
 
-export function sessionMessageCacheKey(sessionId) {
+export function sessionMessageCacheKey(sessionId, { activity = true } = {}) {
+  const id = String(sessionId || '');
+  if (!id) {
+    return '';
+  }
+  return `${id}:${activity ? 'activity' : 'plain'}`;
+}
+
+function legacySessionMessageCacheKey(sessionId) {
   return String(sessionId || '');
 }
 
-export function createSessionMessageCacheRecord(sessionId, payload) {
-  const key = sessionMessageCacheKey(sessionId);
+export function createSessionMessageCacheRecord(sessionId, payload, options = {}) {
+  const activity = options.activity !== false;
+  const key = sessionMessageCacheKey(sessionId, { activity });
   const revision = typeof payload?.revision === 'string' ? payload.revision : '';
   if (!key || !revision || !Array.isArray(payload?.messages)) {
     return null;
   }
   return {
     key,
+    activity,
     revision,
     messages: payload.messages,
     context: payload.context || null,
@@ -23,13 +33,16 @@ export function createSessionMessageCacheRecord(sessionId, payload) {
   };
 }
 
-export function normalizeSessionMessageCacheRecord(sessionId, record) {
-  const key = sessionMessageCacheKey(sessionId);
-  if (!record || record.key !== key || !record.revision || !Array.isArray(record.messages)) {
+export function normalizeSessionMessageCacheRecord(sessionId, record, options = {}) {
+  const activity = options.activity !== false;
+  const key = sessionMessageCacheKey(sessionId, { activity });
+  const allowLegacyPlain = activity === false && record?.key === legacySessionMessageCacheKey(sessionId);
+  if (!record || (record.key !== key && !allowLegacyPlain) || !record.revision || !Array.isArray(record.messages)) {
     return null;
   }
   return {
-    key,
+    key: record.key,
+    activity: record.activity ?? activity,
     revision: record.revision,
     messages: record.messages,
     context: record.context || null,
@@ -66,22 +79,28 @@ function requestToPromise(request) {
   });
 }
 
-export async function readCachedSessionMessages(sessionId) {
+export async function readCachedSessionMessages(sessionId, options = {}) {
   try {
     const db = await openDb();
     if (!db) {
       return null;
     }
     const tx = db.transaction(STORE_NAME, 'readonly');
-    const record = await requestToPromise(tx.objectStore(STORE_NAME).get(sessionMessageCacheKey(sessionId)));
-    return normalizeSessionMessageCacheRecord(sessionId, record);
+    const store = tx.objectStore(STORE_NAME);
+    const record = await requestToPromise(store.get(sessionMessageCacheKey(sessionId, options)));
+    const normalized = normalizeSessionMessageCacheRecord(sessionId, record, options);
+    if (normalized || options.activity !== false) {
+      return normalized;
+    }
+    const legacyRecord = await requestToPromise(store.get(legacySessionMessageCacheKey(sessionId)));
+    return normalizeSessionMessageCacheRecord(sessionId, legacyRecord, options);
   } catch {
     return null;
   }
 }
 
-export async function writeCachedSessionMessages(sessionId, payload) {
-  const record = createSessionMessageCacheRecord(sessionId, payload);
+export async function writeCachedSessionMessages(sessionId, payload, options = {}) {
+  const record = createSessionMessageCacheRecord(sessionId, payload, options);
   if (!record) {
     return false;
   }

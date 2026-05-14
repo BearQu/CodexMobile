@@ -9,6 +9,7 @@ import {
   syncDesktopActivityRuntimeFromMessages
 } from '../session-live-refresh.js';
 import { mergeContextStatus } from './context-status.js';
+import { writeCachedSessionMessages } from './message-cache.js';
 import {
   hasRunningKey,
   isDraftSession,
@@ -88,6 +89,7 @@ export function useSessionLivePolling({
               ? current
               : mergeLiveSelectedThreadMessages(current, data.messages, { preserveActivityState: !pollOptions.activity })
           );
+          writeCachedSessionMessages(sessionId, data, { activity: Boolean(pollOptions.activity) });
         }
       } catch {
         // Keep the currently rendered conversation if a transient poll fails.

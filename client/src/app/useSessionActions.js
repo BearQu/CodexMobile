@@ -104,7 +104,7 @@ export function useSessionActions({
     setDrawerOpen(false);
     try {
       const plainMessagesPromise = apiFetch(sessionMessagesApiPath(session.id, { activity: false }));
-      const cachedData = await readCachedSessionMessages(session.id);
+      const cachedData = await readCachedSessionMessages(session.id, { activity: true });
       if (cachedData && selectedSessionRef.current?.id === requestedSessionId) {
         setMessages((current) => mergeLoadedMessages(current, cachedData.messages || [], { preserveActivityState: true }));
         setContextStatus(normalizeContextStatus(cachedData.context || session.context || defaultStatus.context, defaultStatus.context));
@@ -115,12 +115,13 @@ export function useSessionActions({
       }
       setMessages((current) => mergeLoadedMessages(current, data.messages || [], { preserveActivityState: true }));
       setContextStatus(normalizeContextStatus(data.context || session.context || defaultStatus.context, defaultStatus.context));
-      writeCachedSessionMessages(session.id, data);
+      writeCachedSessionMessages(session.id, data, { activity: false });
       apiFetch(sessionMessagesApiPath(session.id))
         .then((fullData) => {
           if (selectedSessionRef.current?.id === requestedSessionId) {
             setMessages((current) => mergeLoadedMessages(current, fullData.messages || []));
             setContextStatus(normalizeContextStatus(fullData.context || session.context || defaultStatus.context, defaultStatus.context));
+            writeCachedSessionMessages(session.id, fullData, { activity: true });
           }
         })
         .catch(() => null);

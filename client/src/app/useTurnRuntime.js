@@ -7,6 +7,7 @@ import {
   upsertStatusMessage
 } from '../chat/activity-model.js';
 import { mergeContextStatus } from './context-status.js';
+import { writeCachedSessionMessages } from './message-cache.js';
 import {
   externalThreadRuntimeById,
   hasVisibleAssistantForTurn,
@@ -276,6 +277,7 @@ export function useTurnRuntime({
       if (data.messages?.length && hasVisibleAssistantForTurn(data.messages, payload)) {
         setContextStatus((current) => mergeContextStatus(current, data.context || defaultStatus.context, defaultStatus.context));
         setMessages((current) => mergeLoadedMessagesPreservingActivity(current, data.messages, payload));
+        writeCachedSessionMessages(payload.sessionId, data, { activity: true });
         return true;
       }
     } catch {
