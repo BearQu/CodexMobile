@@ -1,4 +1,4 @@
-const DB_NAME = 'codexmobile-message-cache';
+const DB_NAME = 'codexmobile-message-cache-v2';
 const DB_VERSION = 1;
 const STORE_NAME = 'sessionMessages';
 
@@ -124,7 +124,12 @@ export async function deleteCachedSessionMessages(sessionId) {
       return false;
     }
     const tx = db.transaction(STORE_NAME, 'readwrite');
-    await requestToPromise(tx.objectStore(STORE_NAME).delete(sessionMessageCacheKey(sessionId)));
+    const store = tx.objectStore(STORE_NAME);
+    await Promise.all([
+      requestToPromise(store.delete(sessionMessageCacheKey(sessionId, { activity: true }))),
+      requestToPromise(store.delete(sessionMessageCacheKey(sessionId, { activity: false }))),
+      requestToPromise(store.delete(legacySessionMessageCacheKey(sessionId)))
+    ]);
     return true;
   } catch {
     return false;
