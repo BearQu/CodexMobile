@@ -162,6 +162,50 @@ test('raw desktop activities are inserted next to their matching steered user se
   assert.equal(messages[4].activities[0].command, 'rg steer client/src');
 });
 
+test('desktop activity containers keep a stable conversation timestamp', () => {
+  const messages = [
+    {
+      id: 'user-1',
+      role: 'user',
+      content: '先处理这个项目',
+      turnId: 'turn-1',
+      timestamp: '2026-02-02T00:00:00.000Z'
+    },
+    {
+      id: 'user-2',
+      role: 'user',
+      content: '再补一个要求',
+      turnId: 'turn-2',
+      timestamp: '2026-02-02T00:00:02.000Z'
+    }
+  ];
+
+  upsertDesktopActivity(messages, 'turn-1', {
+    id: 'turn-1-raw-command-0',
+    kind: 'command_execution',
+    label: '本地任务已处理',
+    command: 'npm run build',
+    status: 'completed',
+    timestamp: '2026-02-02T00:00:03.000Z'
+  });
+
+  const activity = messages.find((message) => message.role === 'activity');
+  assert.equal(activity.timestamp, '2026-02-02T00:00:00.000Z');
+  assert.deepEqual(messages.map((message) => message.id), ['user-1', 'activity-turn-1', 'user-2']);
+
+  upsertDesktopActivity(messages, 'turn-1', {
+    id: 'turn-1-raw-command-1',
+    kind: 'command_execution',
+    label: '本地任务已处理',
+    command: 'node --test',
+    status: 'completed',
+    timestamp: '2026-02-02T00:00:05.000Z'
+  });
+
+  assert.equal(activity.timestamp, '2026-02-02T00:00:00.000Z');
+  assert.equal(activity.completedAt, '2026-02-02T00:00:05.000Z');
+});
+
 test('completed raw desktop activities create terminal activity containers', () => {
   const messages = [
     {

@@ -242,6 +242,14 @@ function findDesktopActivityInsertIndex(messages, turnId, segmentIndex) {
   return lastTurnIndex >= 0 ? lastTurnIndex + 1 : messages.length;
 }
 
+function desktopActivityAnchorTimestamp(messages, insertIndex, turnId, activity) {
+  const previous = messages[insertIndex - 1];
+  if (previous?.turnId === turnId && previous.timestamp) {
+    return previous.timestamp;
+  }
+  return activity.startedAt || activity.timestamp || new Date().toISOString();
+}
+
 export function upsertDesktopActivity(messages, turnId, activity, segmentIndex = 0) {
   if (!activity) {
     return;
@@ -269,10 +277,13 @@ export function upsertDesktopActivity(messages, turnId, activity, segmentIndex =
     } else {
       existing.activities = [...current, activity];
     }
-    existing.timestamp = activity.timestamp || existing.timestamp;
+    existing.timestamp = existing.timestamp || activity.startedAt || activity.timestamp || new Date().toISOString();
+    existing.startedAt = existing.startedAt || activity.startedAt || activity.timestamp || null;
     applyDesktopActivityContainerStatus(existing);
     return;
   }
+  const insertIndex = findDesktopActivityInsertIndex(messages, turnId, segmentIndex);
+  const timestamp = desktopActivityAnchorTimestamp(messages, insertIndex, turnId, activity);
   const nextMessage = {
     id,
     role: 'activity',
@@ -282,12 +293,12 @@ export function upsertDesktopActivity(messages, turnId, activity, segmentIndex =
     label: '正在处理',
     kind: 'desktop',
     status: 'running',
-    timestamp: activity.timestamp || new Date().toISOString(),
-    startedAt: activity.startedAt || activity.timestamp || null,
+    timestamp,
+    startedAt: activity.startedAt || timestamp || activity.timestamp || null,
     activities: [activity]
   };
   applyDesktopActivityContainerStatus(nextMessage);
-  messages.splice(findDesktopActivityInsertIndex(messages, turnId, segmentIndex), 0, nextMessage);
+  messages.splice(insertIndex, 0, nextMessage);
 }
 
 function normalizedActivityStatus(value) {

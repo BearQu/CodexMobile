@@ -379,6 +379,54 @@ test('session message reader keeps raw activity beside its steered message after
   );
 });
 
+test('session message reader keeps earlier turn activity before later user messages', async () => {
+  const reader = createSessionMessageReader({
+    readDeletedMessageIds: async () => new Set(),
+    readDesktopThread: async () => ({
+      thread: {
+        id: 'session-1',
+        path: '/tmp/rollout.jsonl',
+        turns: [{ id: 'turn-1' }, { id: 'turn-2' }]
+      }
+    }),
+    messagesFromDesktopThread: () => [
+      {
+        id: 'user-1',
+        role: 'user',
+        content: '先处理这个项目',
+        turnId: 'turn-1',
+        timestamp: '2026-02-02T00:00:00.000Z'
+      },
+      {
+        id: 'user-2',
+        role: 'user',
+        content: '再补一个要求',
+        turnId: 'turn-2',
+        timestamp: '2026-02-02T00:00:02.000Z'
+      }
+    ],
+    readRawSessionActivities: async () => [
+      {
+        turnId: 'turn-1',
+        segmentIndex: 0,
+        activity: {
+          id: 'raw-1',
+          kind: 'command_execution',
+          label: '本地任务已处理',
+          command: 'npm run build',
+          timestamp: '2026-02-02T00:00:03.000Z'
+        }
+      }
+    ],
+    readDesktopCollabActivities: async () => [],
+    readRolloutContextState: async () => ({ sessionId: 'session-1' })
+  });
+
+  const result = await reader.readSessionMessages('session-1', { includeActivity: true });
+
+  assert.deepEqual(result.messages.map((message) => message.id), ['user-1', 'activity-turn-1', 'user-2']);
+});
+
 test('session message reader falls back to rollout jsonl when desktop thread is not loaded', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-message-reader-rollout-'));
   try {
