@@ -14,7 +14,7 @@ function hasPendingPlanImplementation(activities = []) {
   );
 }
 
-export function ActivityMessage({ message, now = Date.now(), onImplementPlan }) {
+export function ActivityMessage({ message, now = Date.now(), latestActivity = false, onImplementPlan }) {
   if (!shouldRenderActivityMessageInChat(message)) {
     return null;
   }
@@ -25,15 +25,17 @@ export function ActivityMessage({ message, now = Date.now(), onImplementPlan }) 
   const visibleSteps = activities.filter((activity) => isVisibleActivityStep(activity, message.status));
   const { timeRange, timeline, fileSummary } = projectActivityView(visibleSteps, { running });
   const hasProcess = timeline.length > 0 || Boolean(fileSummary);
-  const [open, setOpen] = useState(() => pendingPlanImplementation || activityCardShouldOpen({ running, hasProcess }));
+  const [open, setOpen] = useState(() =>
+    pendingPlanImplementation || activityCardShouldOpen({ running, hasProcess, latestActivity })
+  );
   const startedAt = message.startedAt || timeRange.startedAt || message.timestamp;
   const endedAt = running ? now : message.completedAt || timeRange.endedAt || message.timestamp || now;
   const duration = !running ? formatDurationMs(message.durationMs) || formatDuration(startedAt, endedAt) : formatDuration(startedAt, endedAt);
   const headline = failed ? '处理失败' : pendingPlanImplementation ? '等待确认' : running ? '处理中' : '已处理';
 
   useEffect(() => {
-    setOpen(pendingPlanImplementation || activityCardShouldOpen({ running, hasProcess }));
-  }, [message.id, running, hasProcess, pendingPlanImplementation]);
+    setOpen(pendingPlanImplementation || activityCardShouldOpen({ running, hasProcess, latestActivity }));
+  }, [message.id, running, hasProcess, latestActivity, pendingPlanImplementation]);
 
   return (
     <div className="message-row is-activity">

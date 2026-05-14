@@ -20,7 +20,12 @@ export function PdfPreview({ data, fileUrl = '' }) {
   const [canFitPage, setCanFitPage] = useState(false);
   const [error, setError] = useState('');
 
-  const source = useMemo(() => (data ? new Uint8Array(data.slice(0)) : null), [data]);
+  const source = useMemo(() => {
+    if (data) {
+      return { data: new Uint8Array(data.slice(0)) };
+    }
+    return fileUrl ? { url: fileUrl } : null;
+  }, [data, fileUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,7 +36,7 @@ export function PdfPreview({ data, fileUrl = '' }) {
     if (!source) {
       return undefined;
     }
-    const loadingTask = pdfjs.getDocument({ data: source });
+    const loadingTask = pdfjs.getDocument(source);
     loadingTask.promise
       .then((pdf) => {
         if (!cancelled) {

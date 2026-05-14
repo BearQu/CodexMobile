@@ -18,8 +18,20 @@ function res() {
       this.statusCode = statusCode;
       this.headers = headers;
     },
-    end(body = '') {
-      this.body = Buffer.isBuffer(body) ? body : Buffer.from(String(body));
+    end(body) {
+      if (body !== undefined) {
+        this.body = Buffer.isBuffer(body) ? body : Buffer.from(String(body));
+      }
+    },
+    write(chunk) {
+      const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+      this.body = Buffer.concat([this.body, data]);
+    },
+    once(event, callback) {
+      if (event === 'finish') {
+        callback();
+      }
+      return this;
     }
   };
 }
@@ -37,6 +49,7 @@ async function withTempService(fn) {
   await fs.writeFile(path.join(generatedRoot, 'image.png'), Buffer.from([137, 80, 78, 71]));
   await fs.writeFile(path.join(root, 'report.md'), '# Report');
   await fs.writeFile(path.join(root, 'brief.pdf'), Buffer.from('%PDF-1.7'));
+  await fs.writeFile(path.join(root, 'clip.mp4'), Buffer.from('0123456789'));
   await fs.writeFile(path.join(root, '甘肃临夏萌宠乐园丨政府汇报项目前置简介.md'), '# 中文文件名');
   await fs.writeFile(path.join(root, 'secret.txt'), 'secret');
   await fs.writeFile(certPath, 'cert');
@@ -110,6 +123,24 @@ test('sendLocalFile serves pdf files with pdf content type', async () => {
     assert.equal(response.statusCode, 200);
     assert.equal(response.headers['content-type'], 'application/pdf');
     assert.match(response.headers['content-disposition'], /^inline;/);
+  });
+});
+
+test('sendLocalFile serves byte ranges for video preview', async () => {
+  await withTempService(async (service, root) => {
+    const filePath = path.join(root, 'clip.mp4');
+    const response = res();
+    await service.sendLocalFile(
+      req({ range: 'bytes=2-5' }),
+      response,
+      new URL(`http://local/api/local-file?path=${encodeURIComponent(filePath)}`)
+    );
+
+    assert.equal(response.statusCode, 206);
+    assert.equal(response.headers['content-type'], 'video/mp4');
+    assert.equal(response.headers['accept-ranges'], 'bytes');
+    assert.equal(response.headers['content-range'], 'bytes 2-5/10');
+    assert.equal(response.body.toString('utf8'), '2345');
   });
 });
 

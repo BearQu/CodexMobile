@@ -1,3 +1,4 @@
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,6 +21,17 @@ export const DEFAULT_MIME_TYPES = new Map([
   ['.gif', 'image/gif'],
   ['.ico', 'image/x-icon'],
   ['.pdf', 'application/pdf'],
+  ['.mp4', 'video/mp4'],
+  ['.m4v', 'video/mp4'],
+  ['.mov', 'video/quicktime'],
+  ['.webm', 'video/webm'],
+  ['.ogv', 'video/ogg'],
+  ['.mp3', 'audio/mpeg'],
+  ['.m4a', 'audio/mp4'],
+  ['.aac', 'audio/aac'],
+  ['.wav', 'audio/wav'],
+  ['.ogg', 'audio/ogg'],
+  ['.flac', 'audio/flac'],
   ['.md', 'text/markdown; charset=utf-8'],
   ['.markdown', 'text/markdown; charset=utf-8'],
   ['.txt', 'text/plain; charset=utf-8'],
@@ -142,6 +154,74 @@ function backupFileName(filePath) {
   return `${now}-${baseName}`;
 }
 
+function parseRangeHeader(value, size) {
+  const match = String(value || '').match(/^bytes=(\d*)-(\d*)$/);
+  if (!match || !Number.isFinite(size) || size <= 0) {
+    return null;
+  }
+  let start;
+  let end;
+  if (match[1] === '' && match[2] === '') {
+    return null;
+  }
+  if (match[1] === '') {
+    const suffixLength = Number(match[2]);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+      return null;
+    }
+    start = Math.max(0, size - suffixLength);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] === '' ? size - 1 : Number(match[2]);
+  }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= size) {
+    return null;
+  }
+  return { start, end: Math.min(end, size - 1) };
+}
+
+function sendFileStream(req, res, filePath, stat, headers) {
+  const range = parseRangeHeader(req.headers?.range, stat.size);
+  const baseHeaders = {
+    ...headers,
+    'accept-ranges': 'bytes'
+  };
+  const streamToResponse = (options = {}) => new Promise((resolve, reject) => {
+    const stream = fsSync.createReadStream(filePath, options);
+    let settled = false;
+    const settle = (callback, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      callback(value);
+    };
+    stream.on('data', (chunk) => {
+      res.write(chunk);
+    });
+    stream.once('error', (error) => settle(reject, error));
+    stream.once('end', () => {
+      res.end();
+      settle(resolve);
+    });
+  });
+  if (range) {
+    const contentLength = range.end - range.start + 1;
+    res.writeHead(206, {
+      ...baseHeaders,
+      'content-range': `bytes ${range.start}-${range.end}/${stat.size}`,
+      'content-length': contentLength
+    });
+    return streamToResponse({ start: range.start, end: range.end });
+  }
+  res.writeHead(200, {
+    ...baseHeaders,
+    'content-length': stat.size
+  });
+  return streamToResponse();
+}
+
 export async function sendLocalImage(req, res, url, {
   mimeTypes = DEFAULT_MIME_TYPES
 } = {}) {
@@ -168,12 +248,11 @@ export async function sendLocalImage(req, res, url, {
       if (!stat.isFile()) {
         continue;
       }
-      const content = await fs.readFile(filePath);
-      sendStaticContent(req, res, 200, content, {
+      await sendFileStream(req, res, filePath, stat, {
         'content-type': contentType,
         'cache-control': 'private, max-age=3600',
         'x-content-type-options': 'nosniff'
-      }, ext);
+      });
       return;
     } catch {
       // Try the decoded candidate before reporting a miss.
@@ -190,8 +269,7 @@ export async function sendLocalFile(req, res, url, {
     const { filePath, stat } = await resolveExistingLocalFile(url);
     const ext = path.extname(filePath).toLowerCase();
     const contentType = mimeTypes.get(ext) || 'application/octet-stream';
-    const content = await fs.readFile(filePath);
-    sendStaticContent(req, res, 200, content, {
+    await sendFileStream(req, res, filePath, stat, {
       'content-type': contentType,
       'cache-control': 'private, max-age=60',
       'content-disposition': inlineContentDisposition(filePath),
@@ -199,7 +277,7 @@ export async function sendLocalFile(req, res, url, {
       'x-local-file-size': String(stat.size),
       'x-local-file-editable': EDITABLE_TEXT_EXTENSIONS.has(ext) ? '1' : '0',
       'x-content-type-options': 'nosniff'
-    }, ext);
+    });
   } catch (error) {
     console.warn(`[local-file] read failed path=${error.requestedPath || ''} checked=${(error.checkedPaths || []).join(' | ')} errors=${JSON.stringify(error.details || [])}`);
     sendJson(res, error.statusCode || 500, {

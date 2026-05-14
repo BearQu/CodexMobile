@@ -12,6 +12,8 @@ import {
   resolveNewConversationProject,
   runningByIdWithSelectedActivity,
   selectedSessionIsRunning,
+  sessionMessagesApiPath,
+  sessionLivePollMessageOptions,
   sessionRunBadgeState,
   shouldClearRuntimeWhenNoActiveRuns,
   shouldDropRunningActivityMissingFromActiveRuns,
@@ -409,4 +411,18 @@ test('localFilePreviewPath routes local files through the mobile preview page', 
     localFilePreviewPath('/Users/demo/report.md', 'secret token'),
     '/preview/file?path=%2FUsers%2Fdemo%2Freport.md&token=secret+token'
   );
+});
+
+test('sessionMessagesApiPath can skip expensive activity projection for initial loads', () => {
+  assert.equal(
+    sessionMessagesApiPath('thread-1', { activity: false }),
+    '/api/sessions/thread-1/messages?limit=120'
+  );
+});
+
+test('sessionLivePollMessageOptions keeps frequent running polls lightweight', () => {
+  assert.deepEqual(sessionLivePollMessageOptions(0), { activity: true });
+  assert.deepEqual(sessionLivePollMessageOptions(1), { activity: false });
+  assert.deepEqual(sessionLivePollMessageOptions(5), { activity: false });
+  assert.deepEqual(sessionLivePollMessageOptions(6), { activity: true });
 });

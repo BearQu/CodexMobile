@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline';
 import { readDesktopThread as defaultReadDesktopThread } from './codex-app-server.js';
 import {
@@ -456,6 +457,25 @@ function sortMessagesByConversationOrder(messages) {
     .map((item) => item.message);
 }
 
+function cacheKeyForMessages(sessionId, includeActivity) {
+  return `${sessionId}:${includeActivity ? 'activity' : 'plain'}`;
+}
+
+async function rolloutFileSignature(filePath) {
+  if (!filePath) {
+    return '';
+  }
+  try {
+    const stats = await fs.stat(filePath);
+    if (!stats.isFile()) {
+      return '';
+    }
+    return `${path.resolve(filePath)}:${stats.size}:${Math.round(stats.mtimeMs)}`;
+  } catch {
+    return '';
+  }
+}
+
 export function isoFromEpochSeconds(value) {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) {
@@ -478,6 +498,8 @@ export function createSessionMessageReader({
   resolveSessionThread = async () => null,
   getConfigContext = () => ({})
 } = {}) {
+  const messageCache = new Map();
+
   async function readThread(sessionId) {
     try {
       const response = await readDesktopThread(sessionId, { includeTurns: true });
@@ -514,6 +536,20 @@ export function createSessionMessageReader({
     { limit = 120, offset = null, latest = true, includeActivity = false } = {}
   ) {
     const deletedIds = await readDeletedMessageIds(sessionId);
+    const session = await resolveSessionThread(sessionId).catch(() => null);
+    const sessionFilePath = session?.filePath || session?.path || '';
+    const sessionSignature = await rolloutFileSignature(sessionFilePath);
+    const cacheKey = cacheKeyForMessages(sessionId, includeActivity);
+    const cached = sessionSignature ? messageCache.get(cacheKey) : null;
+    if (cached?.signature === sessionSignature) {
+      return {
+        ...paginateMessages(filterDeletedMessages(cached.messages, deletedIds), { limit, offset, latest }),
+        context: publicContextState(cached.contextState, getConfigContext() || {}),
+        cached: true,
+        revision: cached.signature
+      };
+    }
+
     const thread = await readThread(sessionId);
 
     const messages = Array.isArray(thread.messages)
@@ -534,9 +570,21 @@ export function createSessionMessageReader({
     const orderedMessages = sortMessagesByConversationOrder(messages);
 
     const contextState = await readRolloutContextStateImpl(thread.path, sessionId);
+    const threadSignature = await rolloutFileSignature(thread.path);
+    if (threadSignature) {
+      messageCache.set(cacheKey, {
+        signature: threadSignature,
+        messages: orderedMessages,
+        contextState
+      });
+    } else {
+      messageCache.delete(cacheKey);
+    }
     return {
       ...paginateMessages(filterDeletedMessages(orderedMessages, deletedIds), { limit, offset, latest }),
-      context: publicContextState(contextState, getConfigContext() || {})
+      context: publicContextState(contextState, getConfigContext() || {}),
+      cached: false,
+      revision: threadSignature || sessionSignature || ''
     };
   }
 

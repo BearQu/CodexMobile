@@ -1,7 +1,7 @@
 import { Composer } from '../composer/Composer.jsx';
 import { ChatPane } from '../chat/ChatPane.jsx';
 import { ImagePreviewModal } from '../chat/ImagePreview.jsx';
-import { ConnectionRecoveryCard, DocsPanel, Drawer, GitPanel, ToastStack, TopBar } from '../panels/index.js';
+import { BackgroundHandoffCard, ConnectionRecoveryCard, DocsPanel, Drawer, GitPanel, ToastStack, TopBar } from '../panels/index.js';
 
 export function AppShell({ shellClass, panelProps, drawerProps, chatProps, composerProps }) {
   const {
@@ -9,6 +9,7 @@ export function AppShell({ shellClass, panelProps, drawerProps, chatProps, compo
     docsPanelProps,
     gitPanelProps,
     recoveryCardProps,
+    backgroundHandoffProps,
     toastStackProps,
     imagePreviewProps
   } = panelProps;
@@ -20,6 +21,7 @@ export function AppShell({ shellClass, panelProps, drawerProps, chatProps, compo
       <DocsPanel {...docsPanelProps} />
       <GitPanel {...gitPanelProps} />
       <ConnectionRecoveryCard {...recoveryCardProps} />
+      <BackgroundHandoffCard {...backgroundHandoffProps} />
       <ToastStack {...toastStackProps} />
       <ChatPane {...chatProps} />
       <Composer {...composerProps} />

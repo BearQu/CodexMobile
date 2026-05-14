@@ -17,6 +17,10 @@ import {
   titleFromFirstMessage
 } from './session-utils.js';
 import {
+  createBackgroundHandoff,
+  shouldCreateBackgroundHandoff
+} from './background-handoff.js';
+import {
   displayMessageForTurn,
   completeLocalAbortMessages,
   implementationPromptForPlan,
@@ -66,7 +70,8 @@ export function useTurnSubmission({
   markSessionCompleteNotice,
   markTurnCompleted,
   scheduleTurnRefresh,
-  loadQueueDrafts
+  loadQueueDrafts,
+  setBackgroundHandoffs = () => null
 }) {
   function applyTurnSession(turn, optimisticSessionId, projectId, previousSessionId) {
     const realSessionId = realSessionIdFromTurn(turn);
@@ -255,7 +260,7 @@ export function useTurnSubmission({
       throw new Error(project ? 'message or attachments are required' : '请先选择项目');
     }
 
-    let sessionForTurn = sessionForTurnSelection(selectedSession, selectedSessionRef);
+    let sessionForTurn = sessionForTurnSelection(selectedSession, selectedSessionRef, project);
     if (!sessionForTurn) {
       sessionForTurn = createDraftSession(project);
       selectedSessionRef.current = sessionForTurn;
@@ -357,6 +362,23 @@ export function useTurnSubmission({
           source: resultRuntimeSource,
           steerable: resultBridgeMode === 'desktop-ipc' ? false : undefined
         });
+      }
+      if (shouldCreateBackgroundHandoff(result)) {
+        const handoff = createBackgroundHandoff({
+          projectId: project.id,
+          sessionId: resultSessionId,
+          previousSessionId: draftSessionId || outgoingSessionId,
+          turnId: resultTurnId,
+          userMessage: displayMessage,
+          reason: result.desktopBridge?.reason || '',
+          createdAt: submittedAt
+        });
+        if (handoff) {
+          setBackgroundHandoffs((current) => [
+            handoff,
+            ...(Array.isArray(current) ? current.filter((item) => item.id !== handoff.id) : [])
+          ].slice(0, 8));
+        }
       }
       if (shouldPollTurnEndpointAfterSend(result)) {
         pollTurnUntilComplete({

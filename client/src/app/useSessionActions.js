@@ -3,6 +3,11 @@ import { desktopBridgeCanCreateThread } from '../send-state.js';
 import { sessionTitleFromConversation } from '../../../shared/session-title.js';
 import { normalizeContextStatus } from './context-status.js';
 import {
+  deleteCachedSessionMessages,
+  readCachedSessionMessages,
+  writeCachedSessionMessages
+} from './message-cache.js';
+import {
   autoTitlePatch,
   createDraftSession,
   emptyContextStatus,
@@ -52,8 +57,10 @@ export function useSessionActions({
 
     setExpandedProjectIds((current) => ({ ...current, [project.id]: true }));
     const projectChanged = selectedProject?.id !== project.id;
+    selectedProjectRef.current = project;
     setSelectedProject(project);
     if (projectChanged) {
+      selectedSessionRef.current = null;
       setSelectedSession(null);
       setMessages([]);
       setSessionLoadingId(null);
@@ -83,12 +90,27 @@ export function useSessionActions({
     setContextStatus(normalizeContextStatus(session?.context || defaultStatus.context, defaultStatus.context));
     setDrawerOpen(false);
     try {
-      const data = await apiFetch(sessionMessagesApiPath(session.id));
+      const plainMessagesPromise = apiFetch(sessionMessagesApiPath(session.id, { activity: false }));
+      const cachedData = await readCachedSessionMessages(session.id);
+      if (cachedData && selectedSessionRef.current?.id === requestedSessionId) {
+        setMessages(cachedData.messages || []);
+        setContextStatus(normalizeContextStatus(cachedData.context || session.context || defaultStatus.context, defaultStatus.context));
+      }
+      const data = await plainMessagesPromise;
       if (selectedSessionRef.current?.id !== requestedSessionId) {
         return;
       }
       setMessages(data.messages || []);
       setContextStatus(normalizeContextStatus(data.context || session.context || defaultStatus.context, defaultStatus.context));
+      writeCachedSessionMessages(session.id, data);
+      apiFetch(sessionMessagesApiPath(session.id))
+        .then((fullData) => {
+          if (selectedSessionRef.current?.id === requestedSessionId) {
+            setMessages(fullData.messages || []);
+            setContextStatus(normalizeContextStatus(fullData.context || session.context || defaultStatus.context, defaultStatus.context));
+          }
+        })
+        .catch(() => null);
     } catch (error) {
       if (selectedSessionRef.current?.id === requestedSessionId) {
         setSessionLoadError(error.message || '加载失败');
@@ -238,6 +260,7 @@ export function useSessionActions({
       await apiFetch(`/api/projects/${encodeURIComponent(project.id)}/sessions/${encodeURIComponent(session.id)}`, {
         method: 'DELETE'
       });
+      deleteCachedSessionMessages(session.id);
       removeLocalSession();
       await refreshProjectSessions(project);
     } catch (error) {
@@ -273,6 +296,7 @@ export function useSessionActions({
         `/api/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`,
         { method: 'DELETE' }
       );
+      deleteCachedSessionMessages(sessionId);
     } catch (error) {
       setMessages((current) => {
         if (current.some((item) => String(item.id) === messageId)) {

@@ -80,6 +80,7 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const MAX_VOICE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_REASONING_EFFORT = 'xhigh';
 const SYNC_RESPONSE_TIMEOUT_MS = Math.max(1000, Number(process.env.CODEXMOBILE_SYNC_RESPONSE_TIMEOUT_MS) || 12_000);
+const SYNC_CACHE_TTL_MS = Math.max(0, Number(process.env.CODEXMOBILE_SYNC_CACHE_TTL_MS) || 45_000);
 let syncRefreshPromise = null;
 
 const sockets = new Set();
@@ -232,7 +233,19 @@ function startSyncRefresh() {
   return syncRefreshPromise;
 }
 
-async function refreshCodexCacheForSyncResponse() {
+function cachedSyncSnapshotIsFresh(snapshot = getCacheSnapshot()) {
+  if (!SYNC_CACHE_TTL_MS || !snapshot.syncedAt) {
+    return false;
+  }
+  const syncedAt = Date.parse(snapshot.syncedAt);
+  return Number.isFinite(syncedAt) && Date.now() - syncedAt < SYNC_CACHE_TTL_MS;
+}
+
+async function refreshCodexCacheForSyncResponse({ force = false } = {}) {
+  const currentSnapshot = getCacheSnapshot();
+  if (!force && cachedSyncSnapshotIsFresh(currentSnapshot)) {
+    return { timedOut: false, snapshot: currentSnapshot, fromCache: true };
+  }
   const refresh = startSyncRefresh();
   const timeout = new Promise((resolve) => {
     const timer = setTimeout(() => {
@@ -328,12 +341,13 @@ async function handleApi(req, res, url) {
   }
 
   if (method === 'POST' && pathname === '/api/sync') {
-    const result = await refreshCodexCacheForSyncResponse();
+    const force = url.searchParams.get('force') === '1';
+    const result = await refreshCodexCacheForSyncResponse({ force });
     const { snapshot, timedOut } = result;
-    if (!timedOut) {
+    if (!timedOut && !result.fromCache) {
       broadcast({ type: 'sync-complete', syncedAt: snapshot.syncedAt, projects: snapshot.projects });
     }
-    sendJson(res, 200, { success: !timedOut && !result.error, pending: timedOut, error: result.error?.message || null, ...snapshot });
+    sendJson(res, 200, { success: !timedOut && !result.error, pending: timedOut, cached: Boolean(result.fromCache), error: result.error?.message || null, ...snapshot });
     return;
   }
 

@@ -71,7 +71,7 @@ function activityInsertIndex(loaded, activity) {
   return index >= 0 ? index : loaded.length;
 }
 
-function preserveLocalActivityMessages(current = [], loaded = []) {
+function preserveLocalActivityMessages(current = [], loaded = [], { preserveActivityState = false } = {}) {
   const loadedIds = new Set(loaded.map((message) => String(message?.id || '')).filter(Boolean));
   const preserved = current
     .filter((message) => message?.role === 'activity' && !loadedIds.has(String(message?.id || '')))
@@ -89,7 +89,7 @@ function preserveLocalActivityMessages(current = [], loaded = []) {
       return loaded.some((item) => messageMatchesRunKeys(item, keys)) || ['running', 'queued'].includes(String(message?.status || ''));
     })
     .map((message) =>
-      isTransientActivityMessage(message)
+      isTransientActivityMessage(message) || preserveActivityState
         ? message
         : completeLocalActivityMessage(message, loaded)
     );
@@ -226,7 +226,7 @@ export function shouldPollSelectedSessionMessages({
   return desktopBridgeUsesExternalThreadRefresh(desktopBridge) && Boolean(hasExternalThreadRefresh);
 }
 
-export function mergeLiveSelectedThreadMessages(current = [], loaded = []) {
+export function mergeLiveSelectedThreadMessages(current = [], loaded = [], options = {}) {
   if (!Array.isArray(loaded)) {
     return Array.isArray(current) ? current : [];
   }
@@ -242,7 +242,7 @@ export function mergeLiveSelectedThreadMessages(current = [], loaded = []) {
   );
 
   if (!hasUncaughtLocalUser) {
-    return preserveLocalActivityMessages(current, loaded);
+    return preserveLocalActivityMessages(current, loaded, options);
   }
 
   const loadedIds = new Set(loaded.map((message) => String(message?.id || '')).filter(Boolean));
@@ -259,7 +259,7 @@ export function mergeLiveSelectedThreadMessages(current = [], loaded = []) {
     return true;
   });
 
-  return preserveLocalActivityMessages(current, [...loaded, ...pending]).sort(
+  return preserveLocalActivityMessages(current, [...loaded, ...pending], options).sort(
     (a, b) => new Date(a?.timestamp || 0).getTime() - new Date(b?.timestamp || 0).getTime()
   );
 }

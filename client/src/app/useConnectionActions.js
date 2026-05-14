@@ -15,7 +15,7 @@ export function useConnectionActions({
   async function handleSync() {
     setSyncing(true);
     try {
-      await apiFetch('/api/sync', { method: 'POST' });
+      await apiFetch('/api/sync?force=1', { method: 'POST' });
       await loadStatus();
       await loadProjects({ preserveSelection: true });
       showToast({ level: 'success', title: '同步完成', body: '线程和状态已经刷新。' });

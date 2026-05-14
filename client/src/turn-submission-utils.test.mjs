@@ -45,6 +45,14 @@ test('sessionForTurnSelection prefers the synchronous selection ref', () => {
   assert.equal(sessionForTurnSelection(staleSession, { current: null }), staleSession);
 });
 
+test('sessionForTurnSelection ignores sessions from another selected project', () => {
+  const project = { id: 'project-2' };
+  const staleSession = { id: 'thread-1', projectId: 'project-1' };
+  const staleRef = { current: { id: 'thread-2', projectId: 'project-1' } };
+
+  assert.equal(sessionForTurnSelection(staleSession, staleRef, project), null);
+});
+
 test('projectForTurnSelection prefers the synchronous project ref', () => {
   const staleProject = { id: 'project-before-render' };
   const currentProject = { id: 'project-current' };

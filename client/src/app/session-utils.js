@@ -309,6 +309,12 @@ export function sessionMessagesApiPath(sessionId, { limit = 120, activity = true
   return `/api/sessions/${encodeURIComponent(sessionId)}/messages?${params.toString()}`;
 }
 
+export function sessionLivePollMessageOptions(pollCount, { fullEvery = 6 } = {}) {
+  const count = Math.max(0, Number(pollCount) || 0);
+  const interval = Math.max(1, Number(fullEvery) || 1);
+  return { activity: count % interval === 0 };
+}
+
 export function titleFromFirstMessage(message) {
   return provisionalSessionTitle(message);
 }

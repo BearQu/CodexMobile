@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { shouldCompleteTurnFromAppServerItem, statusLabel } from './codex-runner.js';
+import { buildTurnStartParams, shouldCompleteTurnFromAppServerItem, statusLabel } from './codex-runner.js';
 
 test('statusLabel uses mobile-friendly command labels', () => {
   assert.equal(statusLabel('command_execution', 'running'), '正在处理本地任务');
@@ -42,4 +42,42 @@ test('completed final assistant item can finish a headless turn without turn com
     }),
     false
   );
+});
+
+test('buildTurnStartParams omits null collaboration mode', () => {
+  const params = buildTurnStartParams({
+    threadId: 'thread-1',
+    input: [{ type: 'text', text: 'hello' }],
+    cwd: '/tmp/project',
+    approvalPolicy: 'never',
+    sandboxPolicy: { type: 'dangerFullAccess' },
+    model: 'gpt-5.5',
+    effort: 'medium',
+    collaborationMode: null
+  });
+
+  assert.equal(Object.hasOwn(params, 'collaborationMode'), false);
+});
+
+test('buildTurnStartParams preserves plan collaboration mode', () => {
+  const collaborationMode = {
+    mode: 'plan',
+    settings: {
+      model: 'gpt-5.5',
+      reasoning_effort: 'medium',
+      developer_instructions: null
+    }
+  };
+  const params = buildTurnStartParams({
+    threadId: 'thread-1',
+    input: [{ type: 'text', text: 'plan' }],
+    cwd: '/tmp/project',
+    approvalPolicy: 'never',
+    sandboxPolicy: { type: 'dangerFullAccess' },
+    model: 'gpt-5.5',
+    effort: 'medium',
+    collaborationMode
+  });
+
+  assert.deepEqual(params.collaborationMode, collaborationMode);
 });

@@ -61,6 +61,7 @@ test('session message reader filters hidden messages, paginates, and exposes con
     assert.equal(result.context.contextWindow, 100000);
     assert.equal(result.context.autoCompact.detected, true);
     assert.equal(result.context.autoCompact.reason, '上下文用量回落');
+    assert.match(result.revision, /rollout\.jsonl:\d+:\d+/);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
@@ -205,6 +206,75 @@ test('session message reader merges raw and collaboration activities only when r
     ['upsert', 'turn-1', 'collab-1'],
     ['sort', 3]
   ]);
+});
+
+test('session message reader reuses projected messages while the rollout file is unchanged', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexmobile-message-reader-cache-'));
+  try {
+    const rolloutPath = path.join(dir, 'rollout.jsonl');
+    await fs.writeFile(rolloutPath, [
+      JSON.stringify({
+        timestamp: '2026-05-08T01:00:00.000Z',
+        type: 'turn_context',
+        payload: { turn_id: 'turn-1' }
+      })
+    ].join('\n'));
+
+    let desktopReads = 0;
+    let rawReads = 0;
+    let contextReads = 0;
+    let deletedReads = 0;
+    const reader = createSessionMessageReader({
+      readDeletedMessageIds: async () => {
+        deletedReads += 1;
+        return deletedReads === 1 ? new Set(['message-2']) : new Set();
+      },
+      resolveSessionThread: async (sessionId) => ({
+        id: sessionId,
+        filePath: rolloutPath
+      }),
+      readDesktopThread: async () => {
+        desktopReads += 1;
+        return {
+          thread: {
+            id: 'session-1',
+            path: rolloutPath,
+            turns: [{ id: 'turn-1' }]
+          }
+        };
+      },
+      messagesFromDesktopThread: () => [
+        { id: 'message-1', role: 'user', content: 'first', timestamp: '2026-05-08T01:00:00.000Z' },
+        { id: 'message-2', role: 'assistant', content: 'second', timestamp: '2026-05-08T01:01:00.000Z' }
+      ],
+      readRawSessionActivities: async () => {
+        rawReads += 1;
+        return [];
+      },
+      readDesktopCollabActivities: async () => [],
+      readRolloutContextState: async () => {
+        contextReads += 1;
+        return { sessionId: 'session-1' };
+      }
+    });
+
+    const first = await reader.readSessionMessages('session-1', { includeActivity: true, limit: 1, latest: true });
+    const second = await reader.readSessionMessages('session-1', { includeActivity: true, limit: 2, latest: true });
+
+    assert.deepEqual(first.messages.map((message) => message.id), ['message-1']);
+    assert.deepEqual(second.messages.map((message) => message.id), ['message-1', 'message-2']);
+    assert.equal(desktopReads, 1);
+    assert.equal(rawReads, 1);
+    assert.equal(contextReads, 1);
+    assert.equal(second.revision, first.revision);
+
+    await fs.appendFile(rolloutPath, '\n');
+    const changed = await reader.readSessionMessages('session-1', { includeActivity: true });
+    assert.equal(desktopReads, 2);
+    assert.notEqual(changed.revision, first.revision);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('session message reader preserves raw activity segment indices', async () => {

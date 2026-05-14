@@ -1563,6 +1563,32 @@
   background: #fff;
 }
 
+.file-preview-media-shell {
+  min-height: 100%;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f6f6f6;
+}
+
+.file-preview-media-shell.is-audio {
+  align-items: flex-start;
+  padding-top: 28px;
+}
+
+.file-preview-media {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 136px);
+  object-fit: contain;
+  background: #000;
+}
+
+.file-preview-audio {
+  width: min(620px, 100%);
+}
+
 .file-preview-notice {
   position: absolute;
   left: 50%;
@@ -1783,6 +1809,10 @@
 [data-theme="dark"] .file-preview-markdown h2,
 [data-theme="dark"] .file-preview-markdown h3 {
   color: #fff;
+}
+
+[data-theme="dark"] .file-preview-media-shell {
+  background: #000;
 }
 
 [data-theme="dark"] .pdf-preview {

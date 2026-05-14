@@ -20,6 +20,48 @@ import { createDesktopTurnMonitor } from './desktop-turn-monitor.js';
 
 export { normalizeSelectedSkills } from './chat-request-prep.js';
 
+const BACKGROUND_FALLBACK_SESSION_SOURCES = new Set([
+  'codexmobile',
+  'headless-local',
+  'mobile'
+]);
+
+function sessionCanUseBackgroundFallback(session) {
+  const source = String(session?.source || '').trim().toLowerCase();
+  return Boolean(session?.mobileOnly || BACKGROUND_FALLBACK_SESSION_SOURCES.has(source));
+}
+
+function canUseBackgroundFallbackAfterDesktopIpcFailure({
+  bridge,
+  selectedSessionId,
+  selectedSessionResolvedFromBackgroundAlias,
+  session,
+  error
+}) {
+  if (!desktopIpcCanUseBackgroundFallback(bridge)) {
+    return false;
+  }
+  if (error?.fallbackSafe) {
+    return true;
+  }
+  if (!selectedSessionId) {
+    return true;
+  }
+  if (selectedSessionResolvedFromBackgroundAlias) {
+    return true;
+  }
+  return sessionCanUseBackgroundFallback(session);
+}
+
+function desktopThreadOwnerUnavailableForExistingThread(error) {
+  const message = '桌面端当前无法接管这个线程。为避免手机和桌面内容不同步，未自动转后台执行。请在桌面端重新打开该线程或重启桌面端 Codex 后再发送。';
+  const wrapped = new Error(error?.message ? `${message} 原始错误：${error.message}` : message);
+  wrapped.statusCode = error?.statusCode || 409;
+  wrapped.code = error?.code || 'CODEXMOBILE_DESKTOP_THREAD_OWNER_UNAVAILABLE';
+  wrapped.cause = error;
+  return wrapped;
+}
+
 export function createChatService({
   imagePromptState,
   defaultReasoningEffort = 'xhigh',
@@ -229,6 +271,14 @@ export function createChatService({
       visibleMessage,
       codexMessage
     } = prepared;
+    if (prepared.session?.projectId && prepared.session.projectId !== project.id) {
+      console.warn(
+        `[chat] rejected session/project mismatch: project=${project.id} session=${prepared.session.id} sessionProject=${prepared.session.projectId}`
+      );
+      const error = new Error('Session does not belong to project');
+      error.statusCode = 409;
+      throw error;
+    }
     let selectedSessionId = prepared.selectedSessionId;
     let conversationSessionId = prepared.conversationSessionId;
     let bridge = await assertDesktopBridgeAvailable(getDesktopBridgeStatus);
@@ -328,13 +378,24 @@ export function createChatService({
         } catch (error) {
           const canFallBackToBackground =
             error?.code === 'CODEXMOBILE_DESKTOP_THREAD_OWNER_UNAVAILABLE' &&
-            desktopIpcCanUseBackgroundFallback(bridge);
+            canUseBackgroundFallbackAfterDesktopIpcFailure({
+              bridge,
+              selectedSessionId,
+              selectedSessionResolvedFromBackgroundAlias,
+              session: prepared.session,
+              error
+            });
           if (!canFallBackToBackground) {
+            if (error?.code === 'CODEXMOBILE_DESKTOP_THREAD_OWNER_UNAVAILABLE') {
+              throw desktopThreadOwnerUnavailableForExistingThread(error);
+            }
             throw error;
           }
           bridge = backgroundFallbackBridge(
             bridge,
-            selectedSessionResolvedFromBackgroundAlias
+            error?.fallbackSafe
+              ? '桌面端 IPC 状态异常，已自动转后台 Codex 继续执行。'
+              : selectedSessionResolvedFromBackgroundAlias
               ? undefined
               : '桌面端当前没有接管这个线程，已改用后台 Codex 继续执行。'
           );

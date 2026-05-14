@@ -24,8 +24,12 @@ export function turnMatchesSelection(currentSession, { turnId, optimisticSession
   );
 }
 
-export function sessionForTurnSelection(selectedSession, selectedSessionRef) {
-  return selectedSessionRef?.current || selectedSession || null;
+export function sessionForTurnSelection(selectedSession, selectedSessionRef, selectedProject = null) {
+  const session = selectedSessionRef?.current || selectedSession || null;
+  if (!session || !selectedProject?.id || !session.projectId) {
+    return session;
+  }
+  return session.projectId === selectedProject.id ? session : null;
 }
 
 export function projectForTurnSelection(selectedProject, selectedProjectRef, selectedSession = null, selectedSessionRef = null, projects = []) {

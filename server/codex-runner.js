@@ -482,6 +482,31 @@ export function shouldCompleteTurnFromAppServerItem(method, item, content = '') 
   return Boolean(String(content || item?.text || '').trim());
 }
 
+export function buildTurnStartParams({
+  threadId,
+  input,
+  cwd,
+  approvalPolicy,
+  sandboxPolicy,
+  model = null,
+  effort = null,
+  collaborationMode = null
+}) {
+  const params = {
+    threadId,
+    input,
+    cwd,
+    approvalPolicy,
+    sandboxPolicy,
+    model: model || null,
+    effort: effort || null
+  };
+  if (collaborationMode) {
+    params.collaborationMode = collaborationMode;
+  }
+  return params;
+}
+
 function normalizeAppItem(item, state = {}) {
   if (!item || typeof item !== 'object') {
     return item;
@@ -939,7 +964,7 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
     });
     emitStatus(emit, { sessionId: currentSessionId, turnId, kind: 'reasoning', status: 'running', label: '正在思考' });
 
-    const turnStartParams = {
+    const turnStartParams = buildTurnStartParams({
       threadId: currentSessionId,
       input: buildCodexTurnInput({
         message,
@@ -950,10 +975,10 @@ export async function runCodexTurn({ sessionId, draftSessionId, projectPath, mes
       cwd: workingDirectory,
       approvalPolicy,
       sandboxPolicy: sandboxPolicyFromMode(sandboxMode, { networkAccess: larkCliContext.enabled }),
-      model: model || null,
-      effort: modelReasoningEffort || null,
-      collaborationMode: collaborationMode || null
-    };
+      model,
+      effort: modelReasoningEffort,
+      collaborationMode
+    });
     if (normalizedServiceTier) {
       turnStartParams.serviceTier = normalizedServiceTier;
     }

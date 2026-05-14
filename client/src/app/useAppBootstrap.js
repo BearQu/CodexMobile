@@ -6,6 +6,7 @@ import {
   sessionMessagesApiPath
 } from './session-utils.js';
 import { normalizeContextStatus } from './context-status.js';
+import { readCachedSessionMessages, writeCachedSessionMessages } from './message-cache.js';
 import {
   preferredProjectFromStoredSelection,
   readStoredSelection,
@@ -88,10 +89,25 @@ export function useAppBootstrap({
         }
         setSelectedSession((current) => (current?.id === next.id ? { ...current, ...next } : next));
         setContextStatus(normalizeContextStatus(next.context || defaultStatus.context, defaultStatus.context));
-        const messageData = await apiFetch(sessionMessagesApiPath(next.id));
+        const plainMessagesPromise = apiFetch(sessionMessagesApiPath(next.id, { activity: false }));
+        const cachedMessageData = await readCachedSessionMessages(next.id);
+        if (cachedMessageData && selectedSessionRef.current?.id === next.id) {
+          setMessages(cachedMessageData.messages || []);
+          setContextStatus(normalizeContextStatus(cachedMessageData.context || next.context || defaultStatus.context, defaultStatus.context));
+        }
+        const messageData = await plainMessagesPromise;
         if (selectedSessionRef.current?.id === next.id) {
           setMessages(messageData.messages || []);
           setContextStatus(normalizeContextStatus(messageData.context || next.context || defaultStatus.context, defaultStatus.context));
+          writeCachedSessionMessages(next.id, messageData);
+          apiFetch(sessionMessagesApiPath(next.id))
+            .then((fullMessageData) => {
+              if (selectedSessionRef.current?.id === next.id) {
+                setMessages(fullMessageData.messages || []);
+                setContextStatus(normalizeContextStatus(fullMessageData.context || next.context || defaultStatus.context, defaultStatus.context));
+              }
+            })
+            .catch(() => null);
         }
         return;
       }

@@ -120,11 +120,12 @@ export function ChatPane({ messages, selectedSession, loading = false, loadError
   return (
     <section className="chat-pane" ref={paneRef}>
       <div className="chat-content" ref={contentRef}>
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <ChatMessage
             key={message.id}
             message={message}
             now={now}
+            latestActivity={message.role === 'activity' && messages.slice(index + 1).every((item) => item?.role !== 'activity')}
             onPreviewImage={onPreviewImage}
             onDeleteMessage={onDeleteMessage}
             onImplementPlan={onImplementPlan}

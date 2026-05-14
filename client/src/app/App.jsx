@@ -23,6 +23,10 @@ import { applyPwaTheme } from './pwa-theme.js';
 import { nextSyncedComposerSettings } from './model-sync.js';
 import { rememberSelectedSession } from './selection-persistence.js';
 import {
+  buildBackgroundHandoffMessage,
+  visibleBackgroundHandoff
+} from './background-handoff.js';
+import {
   buildComposerRunStatus,
   emptyContextStatus,
   hasRunningKey,
@@ -102,6 +106,7 @@ export default function App() {
   const [threadRuntimeById, setThreadRuntimeById] = useState({});
   const [syncing, setSyncing] = useState(false);
   const [connectionState, setConnectionState] = useState(() => (getToken() ? 'connecting' : 'disconnected'));
+  const [backgroundHandoffs, setBackgroundHandoffs] = useState([]);
   const wsRef = useRef(null);
   const selectedProjectRef = useRef(null);
   const selectedSessionRef = useRef(null);
@@ -415,6 +420,7 @@ export default function App() {
     setSessionsByProject,
     setMessages,
     setContextStatus,
+    setBackgroundHandoffs,
     applyAutoSessionTitle,
     notifyFromPayload,
     loadQueueDrafts,
@@ -451,6 +457,7 @@ export default function App() {
   });
 
   const {
+    submitCodexMessage,
     handleSubmit,
     handleImplementPlan,
     handleAdjustPlan,
@@ -489,8 +496,45 @@ export default function App() {
     markSessionCompleteNotice,
     markTurnCompleted,
     scheduleTurnRefresh,
-    loadQueueDrafts
+    loadQueueDrafts,
+    setBackgroundHandoffs
   });
+
+  async function handleSyncBackgroundHandoff(handoff) {
+    const message = buildBackgroundHandoffMessage(handoff);
+    try {
+      await submitCodexMessage({
+        message,
+        clearComposer: false,
+        restoreTextOnError: false,
+        sendMode: 'start',
+        visibleMessageOverride: message,
+        codexMessageOverride: message
+      });
+      const syncedAt = new Date().toISOString();
+      setBackgroundHandoffs((current) =>
+        current.map((item) => (item.id === handoff.id ? { ...item, syncedAt } : item))
+      );
+      showToast({
+        level: 'success',
+        title: '已同步到桌面',
+        body: '后台执行摘要已发送到当前线程。'
+      });
+    } catch (error) {
+      showToast({
+        level: 'error',
+        title: '同步失败',
+        body: error.message || '请稍后重试。'
+      });
+    }
+  }
+
+  function handleDismissBackgroundHandoff(handoff) {
+    const syncedAt = new Date().toISOString();
+    setBackgroundHandoffs((current) =>
+      current.map((item) => (item.id === handoff.id ? { ...item, syncedAt } : item))
+    );
+  }
 
   async function handleGitAction(action) {
     if (!selectedProject || selectedRunning) {
@@ -531,6 +575,11 @@ export default function App() {
     syncing
   });
   const topBarRuntime = selectedRuntime || (selectedRunning ? { status: 'running' } : null);
+  const visibleHandoff = visibleBackgroundHandoff(backgroundHandoffs, {
+    selectedProject,
+    selectedSession,
+    desktopBridge: status.desktopBridge
+  });
 
   if (!authenticated) {
     return <PairingScreen onPaired={bootstrap} />;
@@ -580,6 +629,11 @@ export default function App() {
       onSync: handleSync,
       onPair: handleResetPairing,
       onStatus: handleShowConnectionStatus
+    },
+    backgroundHandoffProps: {
+      handoff: visibleHandoff,
+      onSync: handleSyncBackgroundHandoff,
+      onDismiss: handleDismissBackgroundHandoff
     },
     toastStackProps: {
       toasts,

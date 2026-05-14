@@ -9,6 +9,7 @@ import {
 } from '../chat/activity-model.js';
 import { sameUserMessageContent } from '../chat/message-identity.js';
 import { mergeContextStatus, normalizeContextStatus } from './context-status.js';
+import { updateBackgroundHandoffOnPayload } from './background-handoff.js';
 
 const EXTERNAL_THREAD_SOURCES = new Set(['desktop-ipc', 'desktop-thread', 'headless-local']);
 
@@ -81,6 +82,7 @@ export function useAppWebSocket({
   setSessionsByProject,
   setMessages,
   setContextStatus,
+  setBackgroundHandoffs,
   applyAutoSessionTitle,
   notifyFromPayload,
   loadQueueDrafts,
@@ -314,6 +316,7 @@ export function useAppWebSocket({
           return;
         }
         if (payload.type === 'chat-complete' || payload.type === 'chat-error' || payload.type === 'chat-aborted') {
+          setBackgroundHandoffs?.((current) => updateBackgroundHandoffOnPayload(current, payload));
           notifyFromPayload(payload);
           loadQueueDrafts(selectedSessionRef.current).catch(() => null);
           if (payload.type === 'chat-complete') {

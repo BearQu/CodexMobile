@@ -14,6 +14,7 @@ import {
   isDraftSession,
   isLiveThreadRuntime,
   selectedRunKeys,
+  sessionLivePollMessageOptions,
   sessionMessagesApiPath
 } from './session-utils.js';
 
@@ -42,6 +43,7 @@ export function useSessionLivePolling({
 
     const sessionId = selectedSession.id;
     let stopped = false;
+    let pollCount = 0;
     async function pollSelectedSession() {
       if (stopped || sessionLivePollRef.current) {
         return;
@@ -66,22 +68,25 @@ export function useSessionLivePolling({
         return;
       }
       sessionLivePollRef.current = true;
+      const pollOptions = sessionLivePollMessageOptions(pollCount++);
       try {
-        const data = await apiFetch(sessionMessagesApiPath(sessionId));
+        const data = await apiFetch(sessionMessagesApiPath(sessionId, pollOptions));
         if (!stopped && selectedSessionRef.current?.id === sessionId && Array.isArray(data.messages)) {
-          syncDesktopActivityRuntimeFromMessages({
-            messages: data.messages,
-            sessionId,
-            selectedRunRuntime,
-            markRun,
-            clearRun,
-            markSessionCompleteNotice
-          });
+          if (pollOptions.activity) {
+            syncDesktopActivityRuntimeFromMessages({
+              messages: data.messages,
+              sessionId,
+              selectedRunRuntime,
+              markRun,
+              clearRun,
+              markSessionCompleteNotice
+            });
+          }
           setContextStatus((current) => mergeContextStatus(current, data.context || defaultStatus.context, defaultStatus.context));
           setMessages((current) =>
             messageStreamSignature(current) === messageStreamSignature(data.messages)
               ? current
-              : mergeLiveSelectedThreadMessages(current, data.messages)
+              : mergeLiveSelectedThreadMessages(current, data.messages, { preserveActivityState: !pollOptions.activity })
           );
         }
       } catch {
