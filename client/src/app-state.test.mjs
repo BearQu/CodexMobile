@@ -4,6 +4,7 @@ import { appReducer, createInitialUiState } from './app/AppState.js';
 import { applyPwaTheme } from './app/pwa-theme.js';
 import {
   createDraftSession,
+  buildComposerRunStatus,
   externalThreadRuntimeById,
   localFileApiPath,
   localFilePreviewPath,
@@ -201,6 +202,30 @@ test('selected desktop activity counts as running for composer controls', () => 
     running: false,
     hasRunningActivity: false
   }), false);
+});
+
+test('composer run status surfaces the active desktop command', () => {
+  const status = buildComposerRunStatus([
+    {
+      id: 'activity-running-command',
+      role: 'activity',
+      status: 'running',
+      label: '正在处理本地任务',
+      startedAt: '2026-05-14T06:00:00.000Z',
+      activities: [
+        {
+          kind: 'command_execution',
+          status: 'running',
+          label: '正在处理本地任务',
+          command: 'for i in 1 2 3 4 5 6 7 8; do sleep 5; curl -s http://example.test/api/sim; done'
+        }
+      ]
+    }
+  ], true, new Date('2026-05-14T06:00:05.000Z').getTime());
+
+  assert.equal(status.running, true);
+  assert.match(status.label, /^正在运行 for i in 1 2 3 4 5 6 7 8;/);
+  assert.notEqual(status.label, '正在处理本地任务');
 });
 
 test('selected running activity marks the matching sidebar session as running', () => {

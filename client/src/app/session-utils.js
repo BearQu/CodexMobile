@@ -540,6 +540,15 @@ function isVisibleComposerActivityStep(step, messageStatus) {
   return true;
 }
 
+function composerActivityCommandLabel(step) {
+  const command = String(step?.command || step?.detail || '').replace(/\s+/g, ' ').trim();
+  if (command) {
+    return `正在运行 ${command}`;
+  }
+  const label = String(step?.label || '').trim();
+  return label && !isGenericComposerActivityLabel(label) ? label : '运行命令';
+}
+
 function describeComposerActivityStep(step) {
   const label = String(step?.label || '').trim();
   const detail = String(step?.detail || step?.command || step?.toolName || '').trim();
@@ -548,7 +557,7 @@ function describeComposerActivityStep(step) {
     return { type: 'edit', label: compactComposerActivityText(label || '编辑文件') };
   }
   if (step?.kind === 'command_execution' || /命令|shell|执行|npm|node|git|rg|sed|cat/.test(source)) {
-    return { type: 'command', label: compactComposerActivityText(label || '运行命令') };
+    return { type: 'command', label: compactComposerActivityText(composerActivityCommandLabel(step), 96) };
   }
   if (step?.kind === 'web_search' || /web_search|网页搜索|搜索网页/.test(source)) {
     return { type: 'web_search', label: compactComposerActivityText(label || '网页搜索') };
@@ -605,7 +614,7 @@ export function buildComposerRunStatus(messages, running, now = Date.now()) {
   }
 
   return {
-    label: compactComposerActivityText(label) || '正在处理',
+    label: compactComposerActivityText(label, 96) || '正在处理',
     duration,
     running: true
   };
