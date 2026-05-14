@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 import { apiFetch, clearToken } from '../api.js';
+import { messageStreamSignature } from '../chat/activity-model.js';
+import { mergeLiveSelectedThreadMessages } from '../session-live-refresh.js';
 import {
   emptyContextStatus,
   isDraftSession,
@@ -29,6 +31,17 @@ export function useAppBootstrap({
   setSelectedProject,
   setExpandedProjectIds
 }) {
+  function mergeLoadedMessages(current, loaded, options = {}) {
+    const messages = Array.isArray(loaded) ? loaded : [];
+    if (!Array.isArray(current) || !current.length) {
+      return messages;
+    }
+    if (messageStreamSignature(current) === messageStreamSignature(messages)) {
+      return current;
+    }
+    return mergeLiveSelectedThreadMessages(current, messages, options);
+  }
+
   const loadStatus = useCallback(async () => {
     const data = await apiFetch('/api/status');
     setStatus(data);
@@ -92,18 +105,18 @@ export function useAppBootstrap({
         const plainMessagesPromise = apiFetch(sessionMessagesApiPath(next.id, { activity: false }));
         const cachedMessageData = await readCachedSessionMessages(next.id);
         if (cachedMessageData && selectedSessionRef.current?.id === next.id) {
-          setMessages(cachedMessageData.messages || []);
+          setMessages((current) => mergeLoadedMessages(current, cachedMessageData.messages || [], { preserveActivityState: true }));
           setContextStatus(normalizeContextStatus(cachedMessageData.context || next.context || defaultStatus.context, defaultStatus.context));
         }
         const messageData = await plainMessagesPromise;
         if (selectedSessionRef.current?.id === next.id) {
-          setMessages(messageData.messages || []);
+          setMessages((current) => mergeLoadedMessages(current, messageData.messages || [], { preserveActivityState: true }));
           setContextStatus(normalizeContextStatus(messageData.context || next.context || defaultStatus.context, defaultStatus.context));
           writeCachedSessionMessages(next.id, messageData);
           apiFetch(sessionMessagesApiPath(next.id))
             .then((fullMessageData) => {
               if (selectedSessionRef.current?.id === next.id) {
-                setMessages(fullMessageData.messages || []);
+                setMessages((current) => mergeLoadedMessages(current, fullMessageData.messages || []));
                 setContextStatus(normalizeContextStatus(fullMessageData.context || next.context || defaultStatus.context, defaultStatus.context));
               }
             })

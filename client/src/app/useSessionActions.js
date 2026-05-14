@@ -1,4 +1,6 @@
 import { apiFetch } from '../api.js';
+import { messageStreamSignature } from '../chat/activity-model.js';
+import { mergeLiveSelectedThreadMessages } from '../session-live-refresh.js';
 import { desktopBridgeCanCreateThread } from '../send-state.js';
 import { sessionTitleFromConversation } from '../../../shared/session-title.js';
 import { normalizeContextStatus } from './context-status.js';
@@ -44,6 +46,17 @@ export function useSessionActions({
   upsertSessionInProject,
   clearSessionCompleteNotice
 }) {
+  function mergeLoadedMessages(current, loaded, options = {}) {
+    const nextMessages = Array.isArray(loaded) ? loaded : [];
+    if (!Array.isArray(current) || !current.length) {
+      return nextMessages;
+    }
+    if (messageStreamSignature(current) === messageStreamSignature(nextMessages)) {
+      return current;
+    }
+    return mergeLiveSelectedThreadMessages(current, nextMessages, options);
+  }
+
   async function handleToggleProject(project) {
     const isExpanded = Boolean(expandedProjectIds[project.id]);
     if (isExpanded) {
@@ -93,20 +106,20 @@ export function useSessionActions({
       const plainMessagesPromise = apiFetch(sessionMessagesApiPath(session.id, { activity: false }));
       const cachedData = await readCachedSessionMessages(session.id);
       if (cachedData && selectedSessionRef.current?.id === requestedSessionId) {
-        setMessages(cachedData.messages || []);
+        setMessages((current) => mergeLoadedMessages(current, cachedData.messages || [], { preserveActivityState: true }));
         setContextStatus(normalizeContextStatus(cachedData.context || session.context || defaultStatus.context, defaultStatus.context));
       }
       const data = await plainMessagesPromise;
       if (selectedSessionRef.current?.id !== requestedSessionId) {
         return;
       }
-      setMessages(data.messages || []);
+      setMessages((current) => mergeLoadedMessages(current, data.messages || [], { preserveActivityState: true }));
       setContextStatus(normalizeContextStatus(data.context || session.context || defaultStatus.context, defaultStatus.context));
       writeCachedSessionMessages(session.id, data);
       apiFetch(sessionMessagesApiPath(session.id))
         .then((fullData) => {
           if (selectedSessionRef.current?.id === requestedSessionId) {
-            setMessages(fullData.messages || []);
+            setMessages((current) => mergeLoadedMessages(current, fullData.messages || []));
             setContextStatus(normalizeContextStatus(fullData.context || session.context || defaultStatus.context, defaultStatus.context));
           }
         })
