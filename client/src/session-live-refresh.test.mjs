@@ -216,6 +216,32 @@ test('mergeLiveSelectedThreadMessages can preserve running activity state during
   assert.equal(merged[1].activities[0].status, 'running');
 });
 
+test('mergeLiveSelectedThreadMessages keeps preserved activity beside its user during lightweight polls', () => {
+  const current = [
+    { id: 'desktop-user-1', role: 'user', content: '先处理这个项目', sessionId: 'thread-1', turnId: 'turn-1', timestamp: '2026-05-07T06:01:00.000Z' },
+    {
+      id: 'activity-turn-1',
+      role: 'activity',
+      status: 'running',
+      sessionId: 'thread-1',
+      turnId: 'turn-1',
+      content: '正在处理',
+      timestamp: '2026-05-07T06:01:00.000Z',
+      activities: [{ id: 'cmd', kind: 'command_execution', label: '运行命令', status: 'running' }]
+    },
+    { id: 'desktop-user-2', role: 'user', content: '再补一个要求', sessionId: 'thread-1', turnId: 'turn-2', timestamp: '2026-05-07T06:01:02.000Z' }
+  ];
+  const lightweightLoaded = [
+    { id: 'desktop-user-1', role: 'user', content: '先处理这个项目', sessionId: 'thread-1', turnId: 'turn-1', timestamp: '2026-05-07T06:01:00.000Z' },
+    { id: 'desktop-user-2', role: 'user', content: '再补一个要求', sessionId: 'thread-1', turnId: 'turn-2', timestamp: '2026-05-07T06:01:02.000Z' }
+  ];
+
+  const merged = mergeLiveSelectedThreadMessages(current, lightweightLoaded, { preserveActivityState: true });
+
+  assert.deepEqual(merged.map((message) => message.id), ['desktop-user-1', 'activity-turn-1', 'desktop-user-2']);
+  assert.equal(merged[1].status, 'running');
+});
+
 test('desktopRunningActivityPayload exposes a selected desktop running activity for sidebar runtime', () => {
   assert.deepEqual(
     desktopRunningActivityPayload([

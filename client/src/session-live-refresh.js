@@ -65,10 +65,48 @@ function completeLocalActivityMessage(message, loaded = []) {
   };
 }
 
-function activityInsertIndex(loaded, activity) {
+function sameMessageIdentity(left, right) {
+  const leftId = String(left?.id || '');
+  const rightId = String(right?.id || '');
+  if (leftId && rightId && leftId === rightId) {
+    return true;
+  }
+  if (left?.role === 'user' && right?.role === 'user') {
+    return sameUserMessageContent(left.content, right.content);
+  }
+  return false;
+}
+
+function activityAnchorMessage(current, activity) {
+  const activityId = String(activity?.id || '');
+  const index = current.findIndex((message) => String(message?.id || '') === activityId);
+  if (index < 0) {
+    return null;
+  }
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const message = current[cursor];
+    if (message?.role === 'user') {
+      return message;
+    }
+  }
+  return null;
+}
+
+function activityInsertIndex(loaded, activity, current = []) {
   const keys = new Set(messageRunKeys(activity));
   const index = loaded.findIndex((message) => message?.role === 'assistant' && messageMatchesRunKeys(message, keys));
-  return index >= 0 ? index : loaded.length;
+  if (index >= 0) {
+    return index;
+  }
+  const anchor = activityAnchorMessage(current, activity);
+  if (anchor) {
+    const anchorIndex = loaded.findIndex((message) => sameMessageIdentity(anchor, message));
+    if (anchorIndex >= 0) {
+      return anchorIndex + 1;
+    }
+  }
+  const userIndex = loaded.findLastIndex((message) => message?.role === 'user' && messageMatchesRunKeys(message, keys));
+  return userIndex >= 0 ? userIndex + 1 : loaded.length;
 }
 
 function preserveLocalActivityMessages(current = [], loaded = [], { preserveActivityState = false } = {}) {
@@ -99,8 +137,8 @@ function preserveLocalActivityMessages(current = [], loaded = [], { preserveActi
   }
 
   const result = [...loaded];
-  for (const activity of preserved.sort((a, b) => activityInsertIndex(result, a) - activityInsertIndex(result, b))) {
-    result.splice(activityInsertIndex(result, activity), 0, activity);
+  for (const activity of preserved.sort((a, b) => activityInsertIndex(result, a, current) - activityInsertIndex(result, b, current))) {
+    result.splice(activityInsertIndex(result, activity, current), 0, activity);
   }
   return result;
 }
