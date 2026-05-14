@@ -31,6 +31,7 @@ import {
   restoredComposerText,
   sessionForTurnSelection,
   selectedSkillsForPaths,
+  shouldShowOptimisticSubmission,
   shouldPollTurnEndpointAfterSend,
   turnMatchesSelection,
   userMessageMetadataForSendMode
@@ -270,6 +271,7 @@ export function useTurnSubmission({
     }
 
     const turnId = createClientTurnId();
+    const showOptimisticSubmission = shouldShowOptimisticSubmission(sendMode);
     const draftSessionId = isDraftSession(sessionForTurn) ? sessionForTurn.id : null;
     const outgoingSessionId = draftSessionId ? null : sessionForTurn?.id || null;
     const optimisticSessionId = draftSessionId || outgoingSessionId || turnId;
@@ -284,22 +286,24 @@ export function useTurnSubmission({
       setFileMentions([]);
     }
 
-    markRun({ turnId, sessionId: optimisticSessionId, previousSessionId: draftSessionId || outgoingSessionId });
-    const optimisticSessionPatch = { turnId, ...autoTitlePatch(initialTitle) };
-    selectedSessionRef.current = { ...sessionForTurn, ...optimisticSessionPatch };
-    setSelectedSession((current) =>
-      current?.id === sessionForTurn?.id
-        ? { ...current, ...optimisticSessionPatch }
-        : current
-    );
-    setSessionsByProject((current) => ({
-      ...current,
-      [project.id]: (current[project.id] || []).map((item) =>
-        item.id === sessionForTurn.id
-          ? { ...item, ...optimisticSessionPatch }
-          : item
-      )
-    }));
+    if (showOptimisticSubmission) {
+      markRun({ turnId, sessionId: optimisticSessionId, previousSessionId: draftSessionId || outgoingSessionId });
+      const optimisticSessionPatch = { turnId, ...autoTitlePatch(initialTitle) };
+      selectedSessionRef.current = { ...sessionForTurn, ...optimisticSessionPatch };
+      setSelectedSession((current) =>
+        current?.id === sessionForTurn?.id
+          ? { ...current, ...optimisticSessionPatch }
+          : current
+      );
+      setSessionsByProject((current) => ({
+        ...current,
+        [project.id]: (current[project.id] || []).map((item) =>
+          item.id === sessionForTurn.id
+            ? { ...item, ...optimisticSessionPatch }
+            : item
+        )
+      }));
+    }
     const submittedAt = new Date().toISOString();
     const localUserMessage = {
       id: `local-${Date.now()}`,
@@ -310,18 +314,20 @@ export function useTurnSubmission({
       sessionId: optimisticSessionId,
       turnId
     };
-    setMessages((current) => {
-      const next = [...current, localUserMessage];
-      if (!draftSessionId || outgoingSessionId) {
-        return next;
-      }
-      return upsertStatusMessage(next, localHandoffStatusPayload({
-        sessionId: optimisticSessionId,
-        previousSessionId: draftSessionId,
-        turnId,
-        timestamp: submittedAt
-      }));
-    });
+    if (showOptimisticSubmission) {
+      setMessages((current) => {
+        const next = [...current, localUserMessage];
+        if (!draftSessionId || outgoingSessionId) {
+          return next;
+        }
+        return upsertStatusMessage(next, localHandoffStatusPayload({
+          sessionId: optimisticSessionId,
+          previousSessionId: draftSessionId,
+          turnId,
+          timestamp: submittedAt
+        }));
+      });
+    }
 
     try {
       const result = await apiFetch('/api/chat/send', {
@@ -353,7 +359,8 @@ export function useTurnSubmission({
           : resultBridgeMode === 'headless-local'
             ? 'headless-local'
             : null;
-      if (resultTurnId !== turnId || resultSessionId !== optimisticSessionId || resultRuntimeSource) {
+      const resultQueued = result.queued || result.delivery === 'queued';
+      if (!resultQueued && (resultTurnId !== turnId || resultSessionId !== optimisticSessionId || resultRuntimeSource)) {
         markRun({
           turnId: resultTurnId,
           sessionId: resultSessionId,

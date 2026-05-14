@@ -69,6 +69,14 @@ export function userMessageMetadataForSendMode(sendMode = 'start') {
     : {};
 }
 
+export function shouldShowOptimisticSubmission(sendMode = 'start') {
+  return String(sendMode || 'start') !== 'queue';
+}
+
+export function isQueuedSendResult(result = {}) {
+  return Boolean(result?.queued || result?.delivery === 'queued');
+}
+
 export const IMPLEMENT_PLAN_PROMPT_PREFIX = 'PLEASE IMPLEMENT THIS PLAN:';
 
 export function implementationPromptForPlan(planContent) {
@@ -115,6 +123,9 @@ export function restoredComposerText(current, nextText) {
 }
 
 export function shouldPollTurnEndpointAfterSend(result = {}) {
+  if (isQueuedSendResult(result)) {
+    return false;
+  }
   return !['desktop-ipc', 'headless-local'].includes(result?.desktopBridge?.mode);
 }
 

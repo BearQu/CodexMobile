@@ -22,10 +22,20 @@ export function isDesktopThreadStatusPayload(payload = {}) {
 }
 
 export function shouldRenderStatusMessageForPayload(payload = {}) {
+  if (payload?.kind === 'turn' && payload?.status === 'queued') {
+    return false;
+  }
   if (isExternalThreadPayload(payload)) {
     return false;
   }
   return true;
+}
+
+export function shouldTrackStatusRuntime(payload = {}) {
+  if (payload?.status === 'running') {
+    return true;
+  }
+  return payload?.status === 'queued' && payload?.kind !== 'turn';
 }
 
 export function shouldRenderActivityMessageForPayload(payload = {}) {
@@ -263,7 +273,7 @@ export function useAppWebSocket({
           return;
         }
         if (payload.type === 'status-update') {
-          if (payload.status === 'running' || payload.status === 'queued') {
+          if (shouldTrackStatusRuntime(payload)) {
             markRun(payload);
           }
           notifyFromPayload(payload);

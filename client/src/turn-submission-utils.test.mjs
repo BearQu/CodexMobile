@@ -10,6 +10,7 @@ import {
   restoredComposerText,
   sessionForTurnSelection,
   selectedSkillsForPaths,
+  shouldShowOptimisticSubmission,
   shouldPollTurnEndpointAfterSend,
   turnMatchesSelection,
   userMessageMetadataForSendMode
@@ -95,6 +96,12 @@ test('userMessageMetadataForSendMode marks steer messages as guided followups', 
   });
 });
 
+test('queued submissions do not render optimistic chat messages', () => {
+  assert.equal(shouldShowOptimisticSubmission('start'), true);
+  assert.equal(shouldShowOptimisticSubmission('steer'), true);
+  assert.equal(shouldShowOptimisticSubmission('queue'), false);
+});
+
 test('implementationPromptForPlan builds the desktop-compatible followup prompt', () => {
   assert.equal(
     implementationPromptForPlan('  1. 定位同步链路\n2. 补测试  '),
@@ -150,6 +157,14 @@ test('completeLocalAbortMessages finishes the optimistic running activity', () =
 });
 
 test('external thread handoff uses thread refresh instead of client turn polling', () => {
+  assert.equal(
+    shouldPollTurnEndpointAfterSend({ queued: true }),
+    false
+  );
+  assert.equal(
+    shouldPollTurnEndpointAfterSend({ delivery: 'queued' }),
+    false
+  );
   assert.equal(
     shouldPollTurnEndpointAfterSend({ desktopBridge: { mode: 'desktop-ipc' } }),
     false

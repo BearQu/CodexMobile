@@ -6,7 +6,8 @@ import {
   shouldRefreshCurrentSessionAfterReconnect,
   shouldRenderActivityMessageForPayload,
   shouldRenderAssistantMessageForPayload,
-  shouldRenderStatusMessageForPayload
+  shouldRenderStatusMessageForPayload,
+  shouldTrackStatusRuntime
 } from './app/useAppWebSocket.js';
 
 test('desktop IPC status updates drive runtime without rendering local activity cards', () => {
@@ -120,6 +121,25 @@ test('headless fallback activity and assistant updates are read from the thread 
     shouldRenderActivityMessageForPayload({
       type: 'activity-update',
       status: 'running'
+    }),
+    true
+  );
+});
+
+test('queued turn updates refresh the queue without rendering chat activity', () => {
+  const payload = {
+    type: 'status-update',
+    kind: 'turn',
+    status: 'queued'
+  };
+
+  assert.equal(shouldRenderStatusMessageForPayload(payload), false);
+  assert.equal(shouldTrackStatusRuntime(payload), false);
+  assert.equal(
+    shouldTrackStatusRuntime({
+      type: 'status-update',
+      kind: 'reasoning',
+      status: 'queued'
     }),
     true
   );
