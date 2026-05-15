@@ -5,7 +5,7 @@
  *
  * Exports:
  * - 通用与展示 — `formatTime`、`formatRelativeShort`、`formatDuration*`、`subAgentRoleLabel`、`compactPath`、`safeStoredJsonArray` 等。
- * - 上下文与媒体 — `emptyContextStatus`、`imageUrlWithRetry`、`sourceMediaKind`、本地源与 `local*ApiPath`、`dataImageObjectUrl`、`useResolvedImageSource`。
+ * - 上下文与媒体 — `emptyContextStatus`、`imageUrlWithRetry`、`sourceMediaKind`、本地/远程源与 `local*ApiPath`、`remoteImageApiPath`、`dataImageObjectUrl`、`useResolvedImageSource`。
  * - 会话生命周期 — `createClientTurnId`、`createDraftSession`、`resolveNewConversationProject`、`resolveComposerGitProject`、`isDraftSession`、`sessionMessagesApiPath`、标题补丁、`upsertSessionInProject`。
  * - Runtime — `payloadRunKeys`、`selectedRunKeys`、`reconcileThreadRuntimeWithSessions`、`is*Runtime`、`runningByIdWithSelectedActivity`、`sessionRunBadgeState`、`selectedSessionIsRunning`、`hasVisibleAssistantForTurn` 等。
  *
@@ -277,6 +277,11 @@ export function localImageApiPath(value) {
   return `/api/local-image?path=${encodeURIComponent(normalized)}`;
 }
 
+export function remoteImageApiPath(value) {
+  const raw = String(value || '').trim();
+  return `/api/remote-image?url=${encodeURIComponent(raw)}`;
+}
+
 export function localFileApiPath(value) {
   const raw = String(value || '').trim();
   const normalized = /%[0-9a-f]{2}/i.test(raw) ? safeDecodeUriComponent(raw) : raw;
@@ -342,6 +347,33 @@ export function useResolvedImageSource(url, retryKey) {
       }
     }
     if (!isLocalImageSource(raw)) {
+      if (/^https?:\/\//i.test(raw)) {
+        let stopped = false;
+        let objectUrl = '';
+        setResolved({ src: '', local: false, error: false });
+        apiBlobFetch(remoteImageApiPath(raw))
+          .then((blob) => {
+            if (stopped) {
+              return;
+            }
+            objectUrl = URL.createObjectURL(blob);
+            const next = { src: objectUrl, local: false, error: false, cached: true };
+            resolvedImageSourceCache.set(raw, next);
+            setResolved(next);
+          })
+          .catch(() => {
+            if (!stopped) {
+              setResolved({ src: imageUrlWithRetry(raw, retryKey), local: false, error: false });
+            }
+          });
+
+        return () => {
+          stopped = true;
+          if (objectUrl && !resolvedImageSourceCache.has(raw)) {
+            URL.revokeObjectURL(objectUrl);
+          }
+        };
+      }
       setResolved({ src: imageUrlWithRetry(raw, retryKey), local: false, error: false });
       return undefined;
     }

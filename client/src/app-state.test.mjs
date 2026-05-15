@@ -25,6 +25,7 @@ import {
   sessionMessagesApiPath,
   sessionRunBadgeState,
   sourceMediaKind,
+  remoteImageApiPath,
   titleFromFirstMessage
 } from './app/session-utils.js';
 import { completeMessagesForTurnCompletion, runtimeKeysForPayload } from './app/useTurnRuntime.js';
@@ -363,6 +364,13 @@ test('localFilePreviewPath routes local files through the mobile preview page', 
   assert.equal(
     localFilePreviewPath('/Users/demo/report.md', 'secret token'),
     '/preview/file?path=%2FUsers%2Fdemo%2Freport.md'
+  );
+});
+
+test('remoteImageApiPath routes remote markdown images through same-origin proxy', () => {
+  assert.equal(
+    remoteImageApiPath('https://imageobsidian.s3.bitiful.net/webpictures/a.png?x=1'),
+    '/api/remote-image?url=https%3A%2F%2Fimageobsidian.s3.bitiful.net%2Fwebpictures%2Fa.png%3Fx%3D1'
   );
 });
 

@@ -39,6 +39,11 @@ export function createFileRouteHandler({
       return true;
     }
 
+    if (method === 'GET' && pathname === '/api/remote-image') {
+      await staticService.sendRemoteImage(req, res, url);
+      return true;
+    }
+
     if (method === 'GET' && localFileRoute) {
       await staticService.sendLocalFile(req, res, url);
       return true;

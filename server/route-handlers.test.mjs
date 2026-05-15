@@ -189,6 +189,38 @@ test('file route handler accepts local file URLs with source filename path segme
   assert.deepEqual(calls, ['/api/local-file/%E9%9D%92%E7%94%9C.pdf']);
 });
 
+test('file route handler routes remote image proxy requests', async () => {
+  const calls = [];
+  const handler = createFileRouteHandler({
+    getProject: () => null,
+    staticService: {
+      async sendLocalImage() {
+        throw new Error('unexpected');
+      },
+      async sendRemoteImage(req, res, url) {
+        calls.push(url.searchParams.get('url'));
+        res.writeHead(200, { 'content-type': 'image/png' });
+        res.end('png');
+      }
+    },
+    saveUpload: async () => ({ name: 'file.txt' }),
+    uploadRoot: '/tmp/uploads',
+    maxUploadBytes: 100
+  });
+
+  const res = createResponse();
+  assert.equal(
+    await handler(
+      createRequest('GET'),
+      res,
+      new URL('http://local/api/remote-image?url=https%3A%2F%2Fexample.com%2Fa.png')
+    ),
+    true
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(calls, ['https://example.com/a.png']);
+});
+
 test('session route handler renames sessions and broadcasts refresh events', async () => {
   const broadcasts = [];
   const handler = createSessionRouteHandler({

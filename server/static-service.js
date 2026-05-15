@@ -6,7 +6,7 @@
  * Exports:
  * - DEFAULT_MIME_TYPES / EDITABLE_TEXT_EXTENSIONS。
  * - resolveLocalImagePath / safeDecodeLocalPath / stripLocalFileLineSuffix。
- * - sendLocalImage / sendLocalFile / writeLocalTextFile / serveFileFromRoot。
+ * - sendLocalImage / sendRemoteImage / sendLocalFile / writeLocalTextFile / serveFileFromRoot。
  * - createStaticService — 组装根目录与缓存策略。
  *
  * Inward（本模块依赖/组装的关键符号）: http-utils.sendStaticContent、Node fs。
@@ -72,6 +72,9 @@ export const EDITABLE_TEXT_EXTENSIONS = new Set([
   '.xml',
   '.log'
 ]);
+
+const REMOTE_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
+const REMOTE_IMAGE_TIMEOUT_MS = 15_000;
 
 export function resolveLocalImagePath(value) {
   const raw = String(value || '').trim();
@@ -277,6 +280,74 @@ export async function sendLocalImage(req, res, url, {
   sendJson(res, 404, { error: 'Image not found' });
 }
 
+export async function sendRemoteImage(req, res, url, {
+  fetchRemoteImage = fetch,
+  maxBytes = REMOTE_IMAGE_MAX_BYTES,
+  timeoutMs = REMOTE_IMAGE_TIMEOUT_MS
+} = {}) {
+  const rawUrl = String(url.searchParams.get('url') || '').trim();
+  let imageUrl;
+  try {
+    imageUrl = new URL(rawUrl);
+  } catch {
+    sendJson(res, 400, { error: 'Image URL is invalid' });
+    return;
+  }
+  if (imageUrl.protocol !== 'https:' && imageUrl.protocol !== 'http:') {
+    sendJson(res, 400, { error: 'Image URL must use http or https' });
+    return;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const upstream = await fetchRemoteImage(imageUrl.href, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'user-agent': 'CodexMobile/2.0 image proxy'
+      }
+    });
+    if (!upstream.ok) {
+      sendJson(res, upstream.status >= 400 && upstream.status < 500 ? upstream.status : 502, {
+        error: `Remote image request failed: ${upstream.status}`
+      });
+      return;
+    }
+
+    const contentType = String(upstream.headers?.get?.('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!contentType.startsWith('image/')) {
+      sendJson(res, 415, { error: 'Remote URL did not return an image' });
+      return;
+    }
+    const contentLength = Number(upstream.headers?.get?.('content-length') || 0);
+    if (contentLength > maxBytes) {
+      sendJson(res, 413, { error: 'Remote image is too large' });
+      return;
+    }
+
+    const body = Buffer.from(await upstream.arrayBuffer());
+    if (body.length > maxBytes) {
+      sendJson(res, 413, { error: 'Remote image is too large' });
+      return;
+    }
+    res.writeHead(200, {
+      'content-type': contentType,
+      'content-length': body.length,
+      'cache-control': 'private, max-age=3600',
+      'x-content-type-options': 'nosniff'
+    });
+    res.end(body);
+  } catch (error) {
+    sendJson(res, error?.name === 'AbortError' ? 504 : 502, {
+      error: error?.name === 'AbortError' ? 'Remote image request timed out' : 'Remote image request failed'
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function sendLocalFile(req, res, url, {
   mimeTypes = DEFAULT_MIME_TYPES
 } = {}) {
@@ -387,6 +458,7 @@ export function createStaticService({
   clientDist,
   generatedRoot,
   httpsRootCaPath,
+  fetchRemoteImage = fetch,
   mimeTypes = DEFAULT_MIME_TYPES
 }) {
   async function serveStatic(req, res, url) {
@@ -463,6 +535,10 @@ export function createStaticService({
     await sendLocalImage(req, res, url, { mimeTypes });
   }
 
+  async function sendRemoteImageFromRequest(req, res, url) {
+    await sendRemoteImage(req, res, url, { fetchRemoteImage });
+  }
+
   async function sendLocalFileFromRequest(req, res, url) {
     await sendLocalFile(req, res, url, { mimeTypes });
   }
@@ -474,6 +550,7 @@ export function createStaticService({
   return {
     serveStatic,
     sendLocalImage: sendLocalImageFromRequest,
+    sendRemoteImage: sendRemoteImageFromRequest,
     sendLocalFile: sendLocalFileFromRequest,
     writeLocalFile: writeLocalFileFromRequest
   };

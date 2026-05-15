@@ -187,6 +187,37 @@ test('sendLocalFile encodes non-ascii filenames in content-disposition', async (
   });
 });
 
+test('sendRemoteImage proxies image bytes inline without upstream attachment headers', async () => {
+  const upstreamBody = Buffer.from([137, 80, 78, 71]);
+  const service = createStaticService({
+    clientDist: os.tmpdir(),
+    generatedRoot: os.tmpdir(),
+    httpsRootCaPath: path.join(os.tmpdir(), 'missing.cer'),
+    fetchRemoteImage: async (url) => {
+      assert.equal(url, 'https://imageobsidian.s3.bitiful.net/webpictures/a.png');
+      return new Response(upstreamBody, {
+        status: 200,
+        headers: {
+          'content-type': 'image/png',
+          'content-disposition': 'attachment; filename="a.png"'
+        }
+      });
+    }
+  });
+
+  const response = res();
+  await service.sendRemoteImage(
+    req(),
+    response,
+    new URL('http://local/api/remote-image?url=https%3A%2F%2Fimageobsidian.s3.bitiful.net%2Fwebpictures%2Fa.png')
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers['content-type'], 'image/png');
+  assert.equal(response.headers['content-disposition'], undefined);
+  assert.deepEqual([...response.body], [...upstreamBody]);
+});
+
 test('writeLocalFile saves editable text files with conflict protection and backup', async () => {
   await withTempService(async (service, root) => {
     const filePath = path.join(root, 'report.md');
